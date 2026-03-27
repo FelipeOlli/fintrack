@@ -1,260 +1,85 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import './App.css'
 
-declare const pdfjsLib: any
+import { FinTrackProvider } from './app/FinTrackProvider'
+import type { FinTrackCtx } from './app/finTrackTypes'
+import { FinTrackContent } from './components/FinTrackContent'
+import { FinTrackSidebar } from './components/FinTrackSidebar'
+import { FinTrackTopbar } from './components/FinTrackTopbar'
+import { session } from './app/session'
+import { CAT_COLORS, IMPORT_CATEGORY_OPTIONS, MONTHS } from './constants/categories'
+import type { Bill, BillStatus, CardType, RecurringValueMode } from './domain/types'
+import { bumpDash } from './lib/dashboardSync'
+import { esc, fmt, setText } from './lib/format'
+import { parseTransactionsFromText } from './lib/pdfImportFromText'
+import { mkKey } from './storage/keys'
+import {
+  clearAllBillsMonths,
+  getAccounts,
+  getCategories,
+  getIncomeSources,
+  getRecurringBillsAsBills,
+  getRecurringTemplates,
+  getTotalMonthIncome,
+  getValorUnicoFonte,
+  listBillsStorageKeysSorted,
+  readBillsMonth,
+  saveAccounts,
+  saveCategories,
+  saveIncomeSources,
+  saveRecurringTemplates,
+  setValorUnicoFonte,
+  writeBillsMonth,
+} from './storage/persistence'
 
-const MONTHS = [
-  'Janeiro',
-  'Fevereiro',
-  'Março',
-  'Abril',
-  'Maio',
-  'Junho',
-  'Julho',
-  'Agosto',
-  'Setembro',
-  'Outubro',
-  'Novembro',
-  'Dezembro',
-]
-
-const CAT_COLORS: Record<string, string> = {
-  Moradia: '#2563eb',
-  Transporte: '#3b82f6',
-  Alimentação: '#16a34a',
-  Saúde: '#f97316',
-  Lazer: '#6366f1',
-  Financeiro: '#0ea5e9',
-  Outros: '#9ca3af',
+/* Global from index.html CDN (pdf.js) */
+declare const pdfjsLib: {
+  getDocument: (opts: { data: ArrayBuffer }) => {
+    promise: Promise<{
+      numPages: number
+      getPage: (n: number) => Promise<{
+        getTextContent: () => Promise<{ items: { str: string }[] }>
+      }>
+    }>
+  }
+  GlobalWorkerOptions: { workerSrc: string }
 }
 
-const CAT_KW: Record<string, string[]> = {
-  Moradia: [
-    'água',
-    'luz',
-    'gás',
-    'aluguel',
-    'condomínio',
-    'iptu',
-    'energia',
-    'enel',
-    'sabesp',
-    'copel',
-    'cemig',
-    'comgás',
-  ],
-  Transporte: [
-    'uber',
-    '99',
-    'combustível',
-    'gasolina',
-    'estacionamento',
-    'pedágio',
-    'ipva',
-    'detran',
-    'carro',
-    'moto',
-    'ônibus',
-    'metrô',
-  ],
-  Alimentação: [
-    'supermercado',
-    'mercado',
-    'ifood',
-    'rappi',
-    'restaurante',
-    'lanchonete',
-    'padaria',
-    'açougue',
-    'comida',
-    'refeição',
-    'extra',
-    'carrefour',
-    'atacadão',
-  ],
-  Saúde: [
-    'farmácia',
-    'drogaria',
-    'plano de saúde',
-    'consulta',
-    'médico',
-    'hospital',
-    'unimed',
-    'amil',
-    'hapvida',
-  ],
-  Lazer: [
-    'netflix',
-    'spotify',
-    'amazon',
-    'disney',
-    'hbo',
-    'streaming',
-    'cinema',
-    'teatro',
-    'viagem',
-    'hotel',
-    'airbnb',
-    'game',
-  ],
-  Financeiro: [
-    'inter',
-    'nubank',
-    'caixa',
-    'bradesco',
-    'itaú',
-    'santander',
-    'banco',
-    'fatura',
-    'cartão',
-    'empréstimo',
-    'mercadopago',
-    'picpay',
-    'pix',
-  ],
+function askRecurringValueMode(currentValue: number): RecurringValueMode {
+  const formatted = (currentValue || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+  const useSame = window.confirm(
+    `Esta conta será criada automaticamente nos próximos meses.\n\n` +
+      `Clique em OK para repetir com o valor atual (${formatted}).\n` +
+      `Clique em Cancelar para criar com valor zerado (R$ 0,00).`,
+  )
+  return useSame ? 'same' : 'zero'
 }
 
-type BillStatus = 'pago' | 'pendente' | 'divida' | 'vazio'
-
-type CardType = 'nenhum' | 'credito' | 'debito'
-
-type Account = {
-  id: string
-  name: string
-  cardType: CardType
-}
-
-type Bill = {
-  name: string
-  category: string
-  value: number
-  status: BillStatus
-  obs: string
-  accountId?: string
-}
-
-type RecurringTemplate = {
+function createRecurringTemplateFromBill(bill: {
   name: string
   category: string
   value: number
   status: BillStatus
   accountId?: string
-}
-
-const ACCOUNTS_STORAGE_KEY = 'fintrack_accounts'
-
-const RECURRING_STORAGE_KEY = 'recurring_bills'
-
-const CATEGORIES_STORAGE_KEY = 'fintrack_categories'
-
-const INCOME_SOURCES_KEY = 'fintrack_income_sources'
-
-function incomeKey(monthKey: string) {
-  return `income_${monthKey}`
-}
-
-type Category = { id: string; name: string; color: string }
-
-type IncomeSource = { id: string; name: string; recurring: boolean }
-
-type MonthIncomeEntry = { sourceId: string; value: number }
-
-function getCategories(): Category[] {
-  try {
-    const raw = localStorage.getItem(CATEGORIES_STORAGE_KEY)
-    if (!raw) return Object.entries(CAT_COLORS).map(([name], i) => ({ id: `cat_${i}`, name, color: CAT_COLORS[name] || '#94a3b8' }))
-    const parsed = JSON.parse(raw) as Category[]
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : Object.entries(CAT_COLORS).map(([name], i) => ({ id: `cat_${i}`, name, color: CAT_COLORS[name] || '#94a3b8' }))
-  } catch {
-    return Object.entries(CAT_COLORS).map(([name], i) => ({ id: `cat_${i}`, name, color: CAT_COLORS[name] || '#94a3b8' }))
-  }
-}
-
-function saveCategories(cats: Category[]) {
-  localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats))
-}
-
-function getIncomeSources(): IncomeSource[] {
-  try {
-    const raw = localStorage.getItem(INCOME_SOURCES_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as IncomeSource[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function saveIncomeSources(sources: IncomeSource[]) {
-  localStorage.setItem(INCOME_SOURCES_KEY, JSON.stringify(sources))
-}
-
-function getMonthIncome(monthKey: string): MonthIncomeEntry[] {
-  try {
-    const raw = localStorage.getItem(incomeKey(monthKey))
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as MonthIncomeEntry[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function setMonthIncome(monthKey: string, entries: MonthIncomeEntry[]) {
-  localStorage.setItem(incomeKey(monthKey), JSON.stringify(entries))
-}
-
-function getTotalMonthIncome(monthKey: string): number {
-  return getMonthIncome(monthKey).reduce((s, e) => s + e.value, 0)
-}
-
-type ExtractedItem = {
-  name: string
-  value: number
-  category: string
-  status: BillStatus
-  selected: boolean
-}
-
-const DEFAULT_BILLS: Bill[] = []
-
-let currentMonth = ''
-let currentBills: Bill[] = []
-let extractedData: ExtractedItem[] = []
-let rawText = ''
-
-function mkKey(y: number, m: number) {
-  return `${y}_${String(m + 1).padStart(2, '0')}`
-}
-
-function storKey(k: string) {
-  return `bills_${k}`
-}
-
-function getRecurringTemplates(): RecurringTemplate[] {
-  try {
-    const raw = localStorage.getItem(RECURRING_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as RecurringTemplate[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function saveRecurringTemplates(templates: RecurringTemplate[]) {
-  localStorage.setItem(RECURRING_STORAGE_KEY, JSON.stringify(templates))
-}
-
-function getRecurringBillsAsBills(): Bill[] {
-  return getRecurringTemplates().map((r) => ({
-    name: r.name,
-    category: r.category,
-    value: r.value,
-    status: r.status,
-    obs: '',
-    accountId: r.accountId,
-  }))
+}) {
+  const list = getRecurringTemplates()
+  const already = list.some(
+    (r) => r.name === bill.name && r.category === bill.category,
+  )
+  if (already) return
+  const mode = askRecurringValueMode(bill.value || 0)
+  const tplValue = mode === 'same' ? bill.value || 0 : 0
+  list.push({
+    name: bill.name,
+    category: bill.category,
+    value: tplValue,
+    status: bill.status,
+    accountId: bill.accountId,
+  })
+  saveRecurringTemplates(list)
 }
 
 function isRecurring(bill: Bill): boolean {
@@ -274,37 +99,15 @@ function descontinuarRecurrente(name: string, category: string) {
 }
 
 function tornarRecorrente(bill: Bill) {
-  const list = getRecurringTemplates()
-  const already = list.some(
-    (r) => r.name === bill.name && r.category === bill.category,
-  )
-  if (!already) {
-    list.push({
-      name: bill.name,
-      category: bill.category,
-      value: bill.value,
-      status: bill.status,
-      accountId: bill.accountId,
-    })
-    saveRecurringTemplates(list)
-    renderBills()
-    showToast('Conta definida como recorrente.')
-  }
-}
-
-function getAccounts(): Account[] {
-  try {
-    const raw = localStorage.getItem(ACCOUNTS_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as Account[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function saveAccounts(accounts: Account[]) {
-  localStorage.setItem(ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts))
+  createRecurringTemplateFromBill({
+    name: bill.name,
+    category: bill.category,
+    value: bill.value || 0,
+    status: bill.status,
+    accountId: bill.accountId,
+  })
+  renderBills()
+  showToast('Conta definida como recorrente.')
 }
 
 function getAccountName(id: string): string {
@@ -333,12 +136,10 @@ function deleteAccount(id: string) {
   showToast('Conta excluída.')
 }
 
-let editingAccountId: string | null = null
-
 function openEditAccountModal(id: string) {
   const acc = getAccounts().find((a) => a.id === id)
   if (!acc) return
-  editingAccountId = id
+  session.editingAccountId = id
   const nameInput = document.getElementById('modalEditContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalEditContaCardType') as HTMLSelectElement | null
   if (nameInput) nameInput.value = acc.name
@@ -347,12 +148,12 @@ function openEditAccountModal(id: string) {
 }
 
 function closeEditAccountModal() {
-  editingAccountId = null
+  session.editingAccountId = null
   document.getElementById('modalEditConta')?.classList.remove('modal-visible')
 }
 
 function saveEditAccount() {
-  if (!editingAccountId) return
+  if (!session.editingAccountId) return
   const nameInput = document.getElementById('modalEditContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalEditContaCardType') as HTMLSelectElement | null
   if (!nameInput || !cardSelect) return
@@ -362,7 +163,7 @@ function saveEditAccount() {
     return
   }
   const list = getAccounts().map((a) =>
-    a.id === editingAccountId
+    a.id === session.editingAccountId
       ? { ...a, name, cardType: cardSelect.value as CardType }
       : a,
   )
@@ -407,10 +208,8 @@ function renderCategoriasPage() {
   })
 }
 
-let editingCategoryId: string | null = null
-
 function openCategoryModal() {
-  editingCategoryId = null
+  session.editingCategoryId = null
   setText('modalCategoriaTitle', 'Nova categoria')
   const modal = document.getElementById('modalCategoria')
   const nameInput = document.getElementById('modalCategoriaName') as HTMLInputElement | null
@@ -422,14 +221,14 @@ function openCategoryModal() {
 }
 
 function closeCategoryModal() {
-  editingCategoryId = null
+  session.editingCategoryId = null
   document.getElementById('modalCategoria')?.classList.remove('modal-visible')
 }
 
 function openEditCategoryModal(id: string) {
   const cat = getCategories().find((c) => c.id === id)
   if (!cat) return
-  editingCategoryId = id
+  session.editingCategoryId = id
   setText('modalCategoriaTitle', 'Editar categoria')
   const nameInput = document.getElementById('modalCategoriaName') as HTMLInputElement | null
   const colorInput = document.getElementById('modalCategoriaColor') as HTMLInputElement | null
@@ -449,8 +248,8 @@ function saveCategory() {
   }
   const color = colorInput.value || '#94a3b8'
   const cats = getCategories()
-  if (editingCategoryId) {
-    const idx = cats.findIndex((c) => c.id === editingCategoryId)
+  if (session.editingCategoryId) {
+    const idx = cats.findIndex((c) => c.id === session.editingCategoryId)
     if (idx >= 0) {
       cats[idx] = { ...cats[idx], name, color }
       saveCategories(cats)
@@ -459,10 +258,11 @@ function saveCategory() {
     cats.push({ id: `cat_${Date.now()}`, name, color })
     saveCategories(cats)
   }
+  const wasEdit = Boolean(session.editingCategoryId)
   closeCategoryModal()
   renderCategoriasPage()
   renderLancamentoModalCategories()
-  showToast(editingCategoryId ? 'Categoria atualizada!' : 'Categoria adicionada!')
+  showToast(wasEdit ? 'Categoria atualizada!' : 'Categoria adicionada!')
 }
 
 function deleteCategory(id: string) {
@@ -492,13 +292,13 @@ function renderFontesRendaPage() {
         <tbody>
           ${sources
             .map((s) => {
-              const valorUnico = getValorUnicoFonte(currentMonth, s.id)
+              const valorUnico = getValorUnicoFonte(session.currentMonth, s.id)
               const valoresDisplay = valorUnico > 0 ? fmt(valorUnico) : '—'
               return `
             <tr>
               <td class="td-name">${esc(s.name)}</td>
               <td>${s.recurring ? '🔄 Sim' : '— Não'}</td>
-              <td class="td-valores" style="font-weight:600;color:var(--text1)">${valoresDisplay}</td>
+              <td class="td-valores" style="font-weight:600;color:var(--text)">${valoresDisplay}</td>
               <td class="td-actions">
                 <button type="button" class="btn-ghost-sm btn-edit-fonte" data-id="${s.id}" title="Editar fonte e valor">Editar</button>
                 <button type="button" class="btn-ghost-sm btn-toggle-fonte" data-id="${s.id}">${s.recurring ? 'Desmarcar rec.' : 'Marcar rec.'}</button>
@@ -522,22 +322,10 @@ function renderFontesRendaPage() {
   })
 }
 
-function getValorUnicoFonte(monthKey: string, sourceId: string): number {
-  const entries = getMonthIncome(monthKey).filter((e) => e.sourceId === sourceId)
-  if (entries.length === 0) return 0
-  return entries.reduce((s, e) => s + e.value, 0)
-}
-
-function setValorUnicoFonte(monthKey: string, sourceId: string, value: number) {
-  const list = getMonthIncome(monthKey).filter((e) => e.sourceId !== sourceId)
-  if (value > 0) list.push({ sourceId, value })
-  setMonthIncome(monthKey, list)
-}
-
 function renderModalFonteValores(fonteId: string) {
   const wrap = document.getElementById('modalFonteValoresWrap')
   if (!wrap) return
-  const valorUnico = getValorUnicoFonte(currentMonth, fonteId)
+  const valorUnico = getValorUnicoFonte(session.currentMonth, fonteId)
   wrap.innerHTML = `
     <div class="modal-field" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <label htmlFor="modalFonteValorInput">Valor no mês (R$)</label>
@@ -547,10 +335,8 @@ function renderModalFonteValores(fonteId: string) {
   `
 }
 
-let editingFonteId: string | null = null
-
 function openFonteModal() {
-  editingFonteId = null
+  session.editingFonteId = null
   setText('modalFonteTitle', 'Nova fonte de renda')
   const modal = document.getElementById('modalFonte')
   const nameInput = document.getElementById('modalFonteName') as HTMLInputElement | null
@@ -564,14 +350,14 @@ function openFonteModal() {
 }
 
 function closeFonteModal() {
-  editingFonteId = null
+  session.editingFonteId = null
   document.getElementById('modalFonte')?.classList.remove('modal-visible')
 }
 
 function openEditFonteModal(id: string) {
   const s = getIncomeSources().find((x) => x.id === id)
   if (!s) return
-  editingFonteId = id
+  session.editingFonteId = id
   setText('modalFonteTitle', 'Editar fonte')
   const nameInput = document.getElementById('modalFonteName') as HTMLInputElement | null
   const recCheck = document.getElementById('modalFonteRecurring') as HTMLInputElement | null
@@ -594,24 +380,25 @@ function saveFonte() {
   }
   const recurring = recCheck?.checked ?? false
   const list = getIncomeSources()
-  if (editingFonteId) {
-    const idx = list.findIndex((x) => x.id === editingFonteId)
+  if (session.editingFonteId) {
+    const idx = list.findIndex((x) => x.id === session.editingFonteId)
     if (idx >= 0) {
       list[idx] = { ...list[idx], name, recurring }
       saveIncomeSources(list)
     }
     const valorInput = document.getElementById('modalFonteValorInput') as HTMLInputElement | null
     const value = parseFloat(valorInput?.value || '0') || 0
-    setValorUnicoFonte(currentMonth, editingFonteId, value)
+    setValorUnicoFonte(session.currentMonth, session.editingFonteId, value)
     updateKPIs()
     renderDashCharts()
   } else {
     list.push({ id: `fonte_${Date.now()}`, name, recurring })
     saveIncomeSources(list)
   }
+  const wasEditFonte = Boolean(session.editingFonteId)
   closeFonteModal()
   renderFontesRendaPage()
-  showToast(editingFonteId ? 'Fonte atualizada!' : 'Fonte adicionada!')
+  showToast(wasEditFonte ? 'Fonte atualizada!' : 'Fonte adicionada!')
 }
 
 function toggleFonteRecurring(id: string) {
@@ -676,11 +463,11 @@ function renderBills() {
   const tb = document.getElementById('billsBody')
   if (!tb) return
   tb.innerHTML = ''
-  currentBills.forEach((bill, i) => {
+  session.currentBills.forEach((bill, i) => {
     const rec = isRecurring(bill)
-    const recorrenteCell = rec
-      ? `<span class="badge-recorrente">🔄 Recorrente</span> <button type="button" class="btn-ghost-sm btn-descontinuar">Descontinuar</button>`
-      : `<button type="button" class="btn-ghost-sm btn-tornar-recorrente">Tornar recorrente</button>`
+    const recorrenteCell = `<button type="button" class="btn-recorrente-toggle${rec ? ' is-active' : ''}">${
+      rec ? '🔂' : '❌'
+    }</button>`
     const accountLabel = bill.accountId
       ? `${getAccountName(bill.accountId)}${getAccountCardType(bill.accountId) ? ` · ${getAccountCardType(bill.accountId)}` : ''}`
       : '—'
@@ -716,14 +503,15 @@ function renderBills() {
     removeBtn?.addEventListener('click', () => rmBill(i))
     const editBtn = tr.querySelector('.btn-edit-bill') as HTMLButtonElement
     editBtn?.addEventListener('click', () => openEditBillModal(i))
-    if (rec) {
-      const btnDescontinuar = tr.querySelector('.btn-descontinuar') as HTMLButtonElement
-      btnDescontinuar?.addEventListener('click', () =>
-        descontinuarRecurrente(bill.name, bill.category),
-      )
-    } else {
-      const btnTornar = tr.querySelector('.btn-tornar-recorrente') as HTMLButtonElement
-      btnTornar?.addEventListener('click', () => tornarRecorrente(bill))
+    const recBtn = tr.querySelector('.btn-recorrente-toggle') as HTMLButtonElement | null
+    if (recBtn) {
+      recBtn.addEventListener('click', () => {
+        if (isRecurring(bill)) {
+          descontinuarRecurrente(bill.name, bill.category)
+        } else {
+          tornarRecorrente(bill)
+        }
+      })
     }
     tb.appendChild(tr)
   })
@@ -756,20 +544,21 @@ function initMonthSel() {
     sel.appendChild(e)
   })
   sel.value = mkKey(now.getFullYear(), now.getMonth())
-  currentMonth = sel.value
+  session.currentMonth = sel.value
 }
 
 function loadMonth() {
   const sel = document.getElementById('monthSelect') as HTMLSelectElement | null
   if (!sel) return
-  currentMonth = sel.value
-  const s = localStorage.getItem(storKey(currentMonth))
-  currentBills = s
-    ? (JSON.parse(s) as Bill[])
-    : getRecurringBillsAsBills().length > 0
-      ? getRecurringBillsAsBills()
-      : JSON.parse(JSON.stringify(DEFAULT_BILLS))
-  const parts = currentMonth.split('_')
+  session.currentMonth = sel.value
+  const saved = readBillsMonth(session.currentMonth)
+  session.currentBills =
+    saved !== null
+      ? saved
+      : getRecurringBillsAsBills().length > 0
+        ? getRecurringBillsAsBills()
+        : []
+  const parts = session.currentMonth.split('_')
   const monthNum = parseInt(parts[1], 10)
   const monthName = monthNum >= 1 && monthNum <= 12 ? MONTHS[monthNum - 1] : parts[1] || 'Mês'
   const label = `${monthName} ${parts[0] || ''}`
@@ -778,7 +567,6 @@ function loadMonth() {
   renderBills()
   updateKPIs()
   renderDashCharts()
-  renderSpark()
   renderHistory()
   updatePendBadge()
 }
@@ -789,25 +577,20 @@ function saveMonth() {
 }
 
 function autoSave() {
-  localStorage.setItem(storKey(currentMonth), JSON.stringify(currentBills))
+  writeBillsMonth(session.currentMonth, session.currentBills)
   renderHistory()
-  renderSpark()
 }
 
 function resetAllData() {
   if (!confirm('Tem certeza que deseja apagar todos os meses salvos?')) return
 
-  Object.keys(localStorage)
-    .filter((k) => k.startsWith('bills_'))
-    .forEach((k) => localStorage.removeItem(k))
+  clearAllBillsMonths()
 
-  // Recarrega mês atual apenas com o template padrão
-  currentBills = JSON.parse(JSON.stringify(DEFAULT_BILLS))
+  session.currentBills = []
   autoSave()
   renderBills()
   updateKPIs()
   renderDashCharts()
-  renderSpark()
   renderHistory()
   updatePendBadge()
   showToast('🧹 Todos os dados foram limpos.')
@@ -820,7 +603,7 @@ function calcTotals() {
   let div = 0
   let npend = 0
   let ndiv = 0
-  currentBills.forEach((b) => {
+  session.currentBills.forEach((b) => {
     const v = b.value || 0
     total += v
     if (b.status === 'pago') pago += v
@@ -832,7 +615,7 @@ function calcTotals() {
       ndiv++
     }
   })
-  const renda = getTotalMonthIncome(currentMonth)
+  const renda = getTotalMonthIncome(session.currentMonth)
   const diffRenda = total - renda
   const divRenda = Math.abs(diffRenda)
   return {
@@ -849,10 +632,47 @@ function calcTotals() {
   }
 }
 
+function updateKpiTrendBadges(t: ReturnType<typeof calcTotals>) {
+  const setBadge = (id: string, text: string, variant: 'up' | 'down' | 'neutral') => {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.textContent = text
+    el.classList.remove('kpi-trend--up', 'kpi-trend--down', 'kpi-trend--neutral')
+    el.classList.add(`kpi-trend--${variant}`)
+    el.style.display = 'inline-flex'
+  }
+  const n = session.currentBills.length
+  setBadge('kpiTotalTrend', n > 0 ? String(n) : '—', n > 0 ? 'neutral' : 'neutral')
+  setBadge('kpiPagoTrend', t.total > 0 ? `+${t.pct}%` : '0%', 'up')
+  if (t.total > 0 && t.pend > 0) {
+    const p = Math.min(999, Math.round((t.pend / t.total) * 100))
+    setBadge('kpiPendTrend', `-${p}%`, 'down')
+  } else {
+    setBadge('kpiPendTrend', '0%', 'neutral')
+  }
+  const r = t.renda
+  if (r > 0) {
+    const pct = Math.min(999, Math.round((Math.abs(t.diffRenda) / r) * 100))
+    if (t.diffRenda > 0) setBadge('kpiDivTrend', `-${pct}%`, 'down')
+    else if (t.diffRenda < 0) setBadge('kpiDivTrend', `+${pct}%`, 'up')
+    else setBadge('kpiDivTrend', '0%', 'neutral')
+  } else {
+    const el = document.getElementById('kpiDivTrend')
+    if (el) {
+      el.textContent = '—'
+      el.classList.remove('kpi-trend--up', 'kpi-trend--down', 'kpi-trend--neutral')
+      el.classList.add('kpi-trend--neutral')
+    }
+  }
+}
+
 function updateKPIs() {
   const t = calcTotals()
   setText('kpiTotal', fmt(t.total))
-  setText('kpiTotalSub', `${currentBills.length} contas cadastradas`)
+  setText(
+    'kpiTotalSub',
+    `${session.currentBills.length} lançamento${session.currentBills.length !== 1 ? 's' : ''} no mês`,
+  )
   setText('kpiPago', fmt(t.pago))
   setText('kpiPagoSub', `${t.pct}% quitado`)
   setText('kpiPend', fmt(t.pend))
@@ -873,21 +693,24 @@ function updateKPIs() {
   setText('kpiDivTotalSub', subtituloOrcamento)
   const kpiDiv = document.getElementById('kpiDivTotal')
   if (kpiDiv) {
-    kpiDiv.classList.remove('blue', 'green', 'yellow', 'red', 'purple')
-    const colorClass = diff > 0 ? 'red' : diff < 0 ? 'green' : 'yellow'
-    kpiDiv.classList.add(colorClass)
+    kpiDiv.classList.remove('tone-red', 'tone-green', 'tone-yellow')
+    if (diff > 0) kpiDiv.classList.add('tone-red')
+    else if (diff < 0) kpiDiv.classList.add('tone-green')
+    else kpiDiv.classList.add('tone-yellow')
   }
   const bar = document.getElementById('kpiPagoPct') as HTMLDivElement | null
   if (bar) bar.style.width = `${t.pct}%`
+  updateKpiTrendBadges(t)
   setText('c_kpiTotal', fmt(t.total))
   setText('c_kpiPago', fmt(t.pago))
   setText('c_kpiPend', fmt(t.pend))
   setText('c_kpiDiv', fmt(t.divRenda))
   updatePendBadge()
+  bumpDash()
 }
 
 function updatePendBadge() {
-  const n = currentBills.filter(
+  const n = session.currentBills.filter(
     (b) => b.status === 'pendente' || b.status === 'divida',
   ).length
   const b = document.getElementById('pendBadge')
@@ -897,13 +720,13 @@ function updatePendBadge() {
 }
 
 function ubill(i: number, f: keyof Bill, v: string) {
-  if (!currentBills[i]) return
+  if (!session.currentBills[i]) return
   if (f === 'value') {
-    currentBills[i].value = parseFloat(v) || 0
+    session.currentBills[i].value = parseFloat(v) || 0
   } else if (f === 'status') {
-    currentBills[i].status = v as BillStatus
+    session.currentBills[i].status = v as BillStatus
   } else if (f === 'obs') {
-    currentBills[i].obs = v
+    session.currentBills[i].obs = v
   }
   updateKPIs()
   renderDashCharts()
@@ -912,10 +735,10 @@ function ubill(i: number, f: keyof Bill, v: string) {
 }
 
 function rmBill(i: number) {
-  const bill = currentBills[i]
+  const bill = session.currentBills[i]
   if (!bill) return
   if (!confirm(`Remover ${bill.name}?`)) return
-  currentBills.splice(i, 1)
+  session.currentBills.splice(i, 1)
   renderBills()
   updateKPIs()
   renderDashCharts()
@@ -958,10 +781,8 @@ function saveNewAccount() {
   renderLancamentoModalAccounts()
 }
 
-let editingBillIndex: number | null = null
-
 function openLancamentoModal() {
-  editingBillIndex = null
+  session.editingBillIndex = null
   renderLancamentoModalAccounts()
   renderLancamentoModalCategories()
   const modal = document.getElementById('modalLancamento')
@@ -991,9 +812,9 @@ function clearLancamentoForm() {
 }
 
 function openEditBillModal(i: number) {
-  const bill = currentBills[i]
+  const bill = session.currentBills[i]
   if (!bill) return
-  editingBillIndex = i
+  session.editingBillIndex = i
   renderLancamentoModalAccounts()
   renderLancamentoModalCategories()
   const titleEl = document.getElementById('modalLancTitle')
@@ -1038,7 +859,7 @@ function closeLancamentoModal() {
 }
 
 function saveLancamentoModal() {
-  if (editingBillIndex !== null) {
+  if (session.editingBillIndex !== null) {
     saveEditBill()
     return
   }
@@ -1064,7 +885,7 @@ function addBill() {
   const value = parseFloat(valueInput.value) || 0
   const status = statusSelect.value as BillStatus
   const obs = obsInput?.value?.trim() || ''
-  currentBills.push({
+  session.currentBills.push({
     name,
     category,
     value,
@@ -1090,7 +911,7 @@ function addBill() {
 }
 
 function saveEditBill() {
-  if (editingBillIndex === null) return
+  if (session.editingBillIndex === null) return
   const accountSelect = document.getElementById('modalLancAccount') as HTMLSelectElement | null
   const nameInput = document.getElementById('modalLancName') as HTMLInputElement | null
   const valueInput = document.getElementById('modalLancValue') as HTMLInputElement | null
@@ -1099,7 +920,7 @@ function saveEditBill() {
   const recurringCheck = document.getElementById('modalLancRecurring') as HTMLInputElement | null
   const obsInput = document.getElementById('modalLancObs') as HTMLInputElement | null
   if (!nameInput || !valueInput || !catSelect || !statusSelect) return
-  const bill = currentBills[editingBillIndex]
+  const bill = session.currentBills[session.editingBillIndex]
   if (!bill) return
   const name = nameInput.value.trim()
   if (!name) {
@@ -1121,8 +942,15 @@ function saveEditBill() {
     const list = getRecurringTemplates().filter((r) => !(r.name === bill.name && r.category === bill.category))
     saveRecurringTemplates(list)
   }
-  currentBills[editingBillIndex] = { name, category, value, status, obs, accountId: accountId || undefined }
-  editingBillIndex = null
+  session.currentBills[session.editingBillIndex] = {
+    name,
+    category,
+    value,
+    status,
+    obs,
+    accountId: accountId || undefined,
+  }
+  session.editingBillIndex = null
   closeLancamentoModal()
   renderBills()
   updateKPIs()
@@ -1132,15 +960,13 @@ function saveEditBill() {
 }
 
 function renderDashCharts() {
-  renderBarChart()
-  renderDonut()
   renderRendaChart()
 }
 
 function renderRendaChart() {
   const el = document.getElementById('dashRendaBars')
   if (!el) return
-  const renda = getTotalMonthIncome(currentMonth)
+  const renda = getTotalMonthIncome(session.currentMonth)
   const t = calcTotals()
   const scale = Math.max(renda, t.total, 1)
   const rendaRestante = Math.max(0, renda - t.pago)
@@ -1166,177 +992,10 @@ function renderRendaChart() {
   `
 }
 
-function renderBarChart() {
-  const el = document.getElementById('dashBars')
-  if (!el) return
-  const allK = Object.keys(localStorage)
-    .filter((k) => k.startsWith('bills_'))
-    .sort()
-    .slice(-12)
-  if (allK.length === 0) {
-    el.innerHTML = '<div class="empty" style="padding:20px"><p>Salve meses para ver o gráfico</p></div>'
-    return
-  }
-  const cats = getCategories()
-  const catColors: Record<string, string> = {}
-  cats.forEach((c) => { catColors[c.name] = c.color })
-  const data = allK.map((k) => {
-    let bills: Bill[] = []
-    try {
-      bills = JSON.parse(localStorage.getItem(k) || '[]') as Bill[]
-      if (!Array.isArray(bills)) bills = []
-    } catch {
-      bills = []
-    }
-    const byCat: Record<string, number> = {}
-    bills.forEach((b) => {
-      const v = b.value || 0
-      if (v > 0) byCat[b.category] = (byCat[b.category] || 0) + v
-    })
-    const p = k.replace('bills_', '').split('_')
-    const monthNum = parseInt(p[1], 10)
-    const monthLabel = monthNum >= 1 && monthNum <= 12 ? MONTHS[monthNum - 1].slice(0, 3) : '???'
-    const yearSuffix = (p[0] || '').slice(-2)
-    const label = `${monthLabel}/${yearSuffix}`
-    return { key: k.replace('bills_', ''), label, byCat, total: Object.values(byCat).reduce((s, x) => s + x, 0) }
-  })
-  const maxVal = Math.max(...data.map((d) => d.total), 1)
-  const catNames = cats.map((c) => c.name)
-  const segments = [...new Set(data.flatMap((d) => Object.keys(d.byCat)))].sort((a, b) => catNames.indexOf(a) - catNames.indexOf(b))
-  el.innerHTML = `
-    <div class="bars-by-month" style="display:flex;align-items:flex-end;gap:6px;min-height:140px;padding:8px 0">
-      ${data
-        .map(
-          (d) => `
-        <div class="bar-month-col" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-          <div style="display:flex;flex-direction:column-reverse;height:100px;width:100%;max-width:32px">
-            ${segments
-              .filter((cat) => (d.byCat[cat] || 0) > 0)
-              .map(
-                (cat) => `
-              <div title="${esc(cat)}: ${fmt(d.byCat[cat])}" style="height:${((d.byCat[cat] || 0) / maxVal) * 100}%;background:${catColors[cat] || '#94a3b8'};width:100%;min-height:2px;border-radius:2px"></div>
-            `,
-              )
-              .join('')}
-          </div>
-          <div style="font-size:0.65rem;color:var(--text3);white-space:nowrap">${d.label}</div>
-          <div style="font-size:0.7rem;font-weight:600;color:var(--text1)">${fmt(d.total)}</div>
-        </div>
-      `,
-        )
-        .join('')}
-    </div>
-    <div class="bars-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:0.72rem">
-      ${segments.map((cat) => `<span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:2px;background:${catColors[cat] || '#94a3b8'}"></span>${esc(cat)}</span>`).join('')}
-    </div>
-  `
-}
-
-function renderDonut() {
-  const t = calcTotals()
-  const total = t.total || 1
-  const segments = [
-    { label: 'Pago', val: t.pago, color: '#16a34a' },
-    { label: 'Pendente', val: t.pend, color: '#eab308' },
-    { label: 'Dívida', val: t.div, color: '#ef4444' },
-  ].filter((s) => s.val > 0)
-  const svg = document.getElementById('donutSvg')
-  const leg = document.getElementById('donutLegend')
-  if (!svg || !leg) return
-  const cx = 55
-  const cy = 55
-  const r = 40
-  const stroke = 14
-  const circ = 2 * Math.PI * r
-  if (segments.length === 0) {
-    svg.innerHTML = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1a2235" stroke-width="${stroke}"/>`
-    leg.innerHTML =
-      '<div style="color:var(--text3);font-size:0.8rem">Sem dados</div>'
-    return
-  }
-  let offset = 0
-  let svgHTML = ''
-  segments.forEach((s) => {
-    const pct = s.val / total
-    const dash = pct * circ
-    const gap = circ - dash
-    svgHTML += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${
-      s.color
-    }" stroke-width="${stroke}" stroke-dasharray="${dash.toFixed(
-      2,
-    )} ${gap.toFixed(
-      2,
-    )}" stroke-dashoffset="${(-offset * circ).toFixed(
-      2,
-    )}" transform="rotate(-90 ${cx} ${cy})" style="transition:all 0.5s"/>`
-    offset += pct
-  })
-  svgHTML += `<text x="${cx}" y="${cy}" text-anchor="middle" dy="0.35em" fill="#f1f5f9" font-size="13" font-weight="800" font-family="Inter,sans-serif">${t.pct}%</text>`
-  svg.innerHTML = svgHTML
-  leg.innerHTML = segments
-    .map(
-      (s) => `
-    <div class="legend-item">
-      <div class="legend-dot" style="background:${s.color}"></div>
-      <div class="legend-name">${s.label}</div>
-      <div class="legend-val" style="color:${s.color}">${fmt(s.val)}</div>
-    </div>`,
-    )
-    .join('')
-}
-
-function renderSpark() {
-  const el = document.getElementById('sparkBars')
-  if (!el) return
-  const allK = Object.keys(localStorage)
-    .filter((k) => k.startsWith('bills_'))
-    .sort()
-  if (allK.length === 0) {
-    el.innerHTML =
-      '<div style="color:var(--text3);font-size:0.8rem;padding:10px">Salve meses para ver a evolução</div>'
-    return
-  }
-  const data = allK.map((k) => {
-    let b: Bill[] = []
-    try {
-      b = JSON.parse(localStorage.getItem(k) || '[]') as Bill[]
-      if (!Array.isArray(b)) b = []
-    } catch {
-      b = []
-    }
-    const t = b.reduce((s, x) => s + (x.value || 0), 0)
-    const p = k.replace('bills_', '').split('_')
-    const monthNum = parseInt(p[1], 10)
-    const label = monthNum >= 1 && monthNum <= 12 ? MONTHS[monthNum - 1].slice(0, 3) : '???'
-    return {
-      label,
-      year: p[0],
-      value: t,
-      key: k.replace('bills_', ''),
-    }
-  })
-  const hmax = Math.max(...data.map((d) => d.value)) || 1
-  el.innerHTML = data
-    .map((d) => {
-      const h = Math.max(8, (d.value / hmax) * 68).toFixed(0)
-      const isCur = d.key === currentMonth
-      return `<div class="spark-col" onclick="document.getElementById('monthSelect').value='${d.key}';(${loadMonth.name})()">
-      <div class="spark-bar ${isCur ? 'current' : ''}" style="height:${h}px" title="${fmt(
-        d.value,
-      )}"></div>
-      <div class="spark-lbl ${isCur ? 'current' : ''}">${d.label}</div>
-    </div>`
-    })
-    .join('')
-}
-
 function renderHistory() {
   const grid = document.getElementById('historyGrid')
   if (!grid) return
-  const allK = Object.keys(localStorage)
-    .filter((k) => k.startsWith('bills_'))
-    .sort()
-    .reverse()
+  const allK = [...listBillsStorageKeysSorted()].reverse()
   if (allK.length === 0) {
     grid.innerHTML =
       '<div class="empty"><div class="em-icon">📅</div><p>Nenhum mês salvo ainda.</p></div>'
@@ -1361,7 +1020,7 @@ function renderHistory() {
       const label = `${monthName} ${pts[0] || ''}`
       const pct = total > 0 ? Math.round((pago / total) * 100) : 0
       const mkey = k.replace('bills_', '')
-      return `<div class="hist-card" onclick="document.getElementById('monthSelect').value='${mkey}';(${loadMonth.name})();(${navigate.name})('dashboard', document.querySelectorAll('.nav-item')[0])">
+      return `<div class="hist-card" onclick="document.getElementById('monthSelect').value='${mkey}';(${loadMonth.name})();(${navigate.name})('dashboard', document.querySelector('[data-nav-page=dashboard]'))">
       <div class="hist-month">${label}</div>
       <div class="hist-total">${fmt(total)}</div>
       <div class="hist-meta">✅ ${fmt(pago)} pago · ${bills.length} contas · ${pct}%</div>
@@ -1383,76 +1042,19 @@ async function handlePdf(file: File | null | undefined) {
     const pdf = await pdfjsLib.getDocument({ data: ab }).promise
     let txt = ''
     for (let p = 1; p <= pdf.numPages; p++) {
-      // eslint-disable-next-line no-await-in-loop
       const pg = await pdf.getPage(p)
-      // eslint-disable-next-line no-await-in-loop
       const ct = await pg.getTextContent()
-      txt += `${ct.items.map((i: any) => i.str).join(' ')}\n`
+      txt += `${ct.items.map((i) => i.str).join(' ')}\n`
     }
-    rawText = txt
+    session.rawText = txt
     status.textContent = `Analisando lançamentos...`
-    extractedData = parseTransactions(txt)
+    session.extractedData = parseTransactionsFromText(txt)
     renderExtracted()
     proc.classList.remove('visible')
-  } catch (e) {
+  } catch {
     proc.classList.remove('visible')
     showToast('Erro ao ler PDF. Verifique se não é protegido.', true)
   }
-}
-
-function parseTransactions(text: string): ExtractedItem[] {
-  const lines = text
-    .split(/\n|\r/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 3)
-  const results: ExtractedItem[] = []
-  const seen = new Set<string>()
-  const dateRe = /\b\d{2}[\/-]\d{2}(?:[\/-]\d{2,4})?\b/
-  lines.forEach((line) => {
-    const money = [...line.matchAll(/(?:R\$\s*)?(\d{1,3}(?:[.]\d{3})*,\d{2})(?!\d)/g)]
-    if (money.length === 0) return
-    const lower = line.toLowerCase()
-    if (lower.includes('saldo') && money.length < 2) return
-    if (
-      lower.match(
-        /^(data|histórico|descrição|agência|conta|extrato|período|banco|cliente|cpf|cnpj)/,
-      )
-    )
-      return
-    money.forEach((m) => {
-      const val = parseFloat(m[1].replace(/\./g, '').replace(',', '.'))
-      if (val < 1 || val > 99999) return
-      let desc = line
-        .replace(m[0], '')
-        .replace(dateRe, '')
-        .replace(/\d{5,}/g, '')
-        .replace(/[*#|_-]{2,}/g, '')
-        .trim()
-        .replace(/\s{2,}/g, ' ')
-        .slice(0, 60)
-      if (desc.length < 3) desc = 'Lançamento'
-      const cat = guessCategory(desc)
-      const key = desc.toLowerCase().slice(0, 20) + val
-      if (seen.has(key)) return
-      seen.add(key)
-      results.push({
-        name: desc,
-        value: val,
-        category: cat,
-        status: 'pago',
-        selected: true,
-      })
-    })
-  })
-  return results.slice(0, 80)
-}
-
-function guessCategory(d: string): string {
-  const dl = d.toLowerCase()
-  for (const [cat, kws] of Object.entries(CAT_KW)) {
-    if (kws.some((k) => dl.includes(k))) return cat
-  }
-  return 'Outros'
 }
 
 function renderExtracted() {
@@ -1462,14 +1064,14 @@ function renderExtracted() {
   const items = document.getElementById('extItems')
   if (!sec || !rawBox || !cnt || !items) return
   sec.style.display = 'block'
-  rawBox.textContent = rawText
-  cnt.textContent = `${extractedData.length} lançamentos encontrados`
-  if (extractedData.length === 0) {
+  rawBox.textContent = session.rawText
+  cnt.textContent = `${session.extractedData.length} lançamentos encontrados`
+  if (session.extractedData.length === 0) {
     items.innerHTML =
       '<div class="empty"><p>Nenhum lançamento detectado. Veja o texto bruto abaixo.</p></div>'
     return
   }
-  items.innerHTML = extractedData
+  items.innerHTML = session.extractedData
     .map(
       (it, i) => `
     <div class="ext-item">
@@ -1478,12 +1080,10 @@ function renderExtracted() {
       } onchange="window.__extToggle && window.__extToggle(${i}, this.checked)">
       <label for="ec${i}" class="ext-name">${esc(it.name)}</label>
       <select onchange="window.__extUpdateCat && window.__extUpdateCat(${i}, this.value)">
-        ${['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Lazer', 'Financeiro', 'Outros']
-          .map(
-            (c) =>
-              `<option ${c === it.category ? 'selected' : ''} value="${c}">${c}</option>`,
-          )
-          .join('')}
+        ${IMPORT_CATEGORY_OPTIONS.map(
+          (c) =>
+            `<option ${c === it.category ? 'selected' : ''} value="${c}">${c}</option>`,
+        ).join('')}
       </select>
       <input type="number" value="${
         it.value
@@ -1505,21 +1105,21 @@ function renderExtracted() {
 }
 
 function toggleAllExt(v: boolean) {
-  extractedData = extractedData.map((it) => ({ ...it, selected: v }))
-  extractedData.forEach((_, i) => {
+  session.extractedData = session.extractedData.map((it) => ({ ...it, selected: v }))
+  session.extractedData.forEach((_, i) => {
     const c = document.getElementById(`ec${i}`) as HTMLInputElement | null
     if (c) c.checked = v
   })
 }
 
 function importSelected() {
-  const sel = extractedData.filter((i) => i.selected)
+  const sel = session.extractedData.filter((i) => i.selected)
   if (sel.length === 0) {
     showToast('Nenhum item selecionado', true)
     return
   }
   sel.forEach((it) =>
-    currentBills.push({
+    session.currentBills.push({
       name: it.name,
       category: it.category,
       value: it.value,
@@ -1532,8 +1132,10 @@ function importSelected() {
   updateKPIs()
   renderDashCharts()
   showToast(`✅ ${sel.length} lançamento(s) importado(s)!`)
-  const navItems = document.querySelectorAll('.nav-item')
-  navigate('contas', navItems[1] as HTMLElement)
+  navigate(
+    'contas',
+    document.querySelector('[data-nav-page="contas"]') as HTMLElement,
+  )
 }
 
 function navigate(page: string, navEl?: Element | null) {
@@ -1562,7 +1164,6 @@ function navigate(page: string, navEl?: Element | null) {
   if (page === 'dashboard') {
     updateKPIs()
     renderDashCharts()
-    renderSpark()
   }
   if (page === 'historico') {
     renderHistory()
@@ -1592,27 +1193,6 @@ function closeSidebar() {
   if (!sb || !ov) return
   sb.classList.remove('open')
   ov.classList.remove('visible')
-}
-
-function fmt(v: number, s = false) {
-  if (s && v >= 1000) return `R$${(v / 1000).toFixed(1)}k`
-  return `R$ ${(v || 0)
-    .toFixed(2)
-    .replace('.', ',')
-    .replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`
-}
-
-function esc(s: string) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function setText(id: string, v: string) {
-  const e = document.getElementById(id)
-  if (e) e.textContent = v
 }
 
 function showToast(msg: string, err = false) {
@@ -1666,741 +1246,68 @@ function App() {
     }
 
     window.__extToggle = (i, checked) => {
-      if (!extractedData[i]) return
-      extractedData[i].selected = checked
+      if (!session.extractedData[i]) return
+      session.extractedData[i].selected = checked
     }
     window.__extUpdateCat = (i, cat) => {
-      if (!extractedData[i]) return
-      extractedData[i].category = cat
+      if (!session.extractedData[i]) return
+      session.extractedData[i].category = cat
     }
     window.__extUpdateVal = (i, value) => {
-      if (!extractedData[i]) return
-      extractedData[i].value = parseFloat(value) || 0
+      if (!session.extractedData[i]) return
+      session.extractedData[i].value = parseFloat(value) || 0
     }
     window.__extUpdateStatus = (i, status) => {
-      if (!extractedData[i]) return
-      extractedData[i].status = status as BillStatus
+      if (!session.extractedData[i]) return
+      session.extractedData[i].status = status as BillStatus
     }
   }, [])
 
+  const finTrackApi = useMemo<FinTrackCtx>(
+    () => ({
+      navigate,
+      goToPage: (page: string) => {
+        const el = document.querySelector(`[data-nav-page="${page}"]`) as HTMLElement
+        navigate(page, el)
+      },
+      loadMonth,
+      saveMonth,
+      resetAllData,
+      toggleSidebar,
+      closeSidebar,
+      openAccountModal,
+      openLancamentoModal,
+      openCategoryModal,
+      openFonteModal,
+      closeAccountModal,
+      saveNewAccount,
+      closeEditAccountModal,
+      saveEditAccount,
+      closeCategoryModal,
+      saveCategory,
+      closeFonteModal,
+      saveFonte,
+      closeLancamentoModal,
+      saveLancamentoModal,
+      handlePdf,
+      toggleAllExt,
+      importSelected,
+    }),
+    [],
+  )
+
   return (
-    <>
+    <FinTrackProvider value={finTrackApi}>
       <div className="overlay" id="overlay" onClick={closeSidebar} />
 
-      <aside className="sidebar" id="sidebar">
-        <div className="sidebar-logo">
-          <div className="logo-icon">💰</div>
-          <div className="logo-text">
-            Fin<span>Track</span>
-          </div>
-        </div>
-
-        <div className="sidebar-month">
-          <label htmlFor="monthSelect">Mês de referência</label>
-          <select
-            id="monthSelect"
-            onChange={() => {
-              loadMonth()
-            }}
-          />
-        </div>
-
-        <nav className="nav">
-          <div className="nav-group-label">Principal</div>
-          <div
-            className="nav-item active"
-            onClick={(e) => navigate('dashboard', e.currentTarget)}
-          >
-            <span className="nav-icon">📊</span> Dashboard
-          </div>
-          <div
-            className="nav-item"
-            onClick={(e) => navigate('contas', e.currentTarget)}
-          >
-            <span className="nav-icon">📋</span> Lançamentos{' '}
-            <span className="nav-badge" id="pendBadge" style={{ display: 'none' }}>
-              !
-            </span>
-          </div>
-
-          <div className="nav-group-label">Cadastros</div>
-          <div
-            className="nav-item"
-            onClick={(e) => navigate('contas-cadastradas', e.currentTarget)}
-          >
-            <span className="nav-icon">🏦</span> Contas cadastradas
-          </div>
-          <div
-            className="nav-item"
-            onClick={(e) => navigate('categorias', e.currentTarget)}
-          >
-            <span className="nav-icon">🏷️</span> Categorias
-          </div>
-          <div
-            className="nav-item"
-            onClick={(e) => navigate('fontes-renda', e.currentTarget)}
-          >
-            <span className="nav-icon">💰</span> Fontes de renda
-          </div>
-          <div className="nav-group-label">Histórico</div>
-          <div
-            className="nav-item"
-            onClick={(e) => navigate('historico', e.currentTarget)}
-          >
-            <span className="nav-icon">🗂️</span> Histórico
-          </div>
-
-          <div className="nav-group-label">Ferramentas</div>
-          <div
-            className="nav-item"
-            onClick={(e) => navigate('importar', e.currentTarget)}
-          >
-            <span className="nav-icon">📄</span> Importar Extrato
-          </div>
-        </nav>
-
-        <div className="sidebar-footer">
-          <button className="btn-save" type="button" onClick={saveMonth}>
-            💾 Salvar Mês
-          </button>
-          <button
-            className="btn-ghost-sm"
-            type="button"
-            style={{ width: '100%', marginTop: 8 }}
-            onClick={resetAllData}
-          >
-            🧹 Limpar dados
-          </button>
-        </div>
-      </aside>
+      <FinTrackSidebar />
 
       <div className="main">
-        <header className="topbar">
-          <button
-            className="hamburger"
-            type="button"
-            onClick={toggleSidebar}
-          >
-            ☰
-          </button>
-          <div>
-            <div className="topbar-title" id="topbarTitle">
-              Dashboard
-            </div>
-            <div className="topbar-sub" id="topbarSub">
-              Visão geral do mês
-            </div>
-          </div>
-          <div className="topbar-actions">
-            <button
-              className="btn btn-outline"
-              type="button"
-              onClick={() => {
-                const navItems = document.querySelectorAll('.nav-item')
-                navigate('importar', navItems[6] as HTMLElement)
-              }}
-            >
-              📄 Importar PDF
-            </button>
-          </div>
-        </header>
+        <FinTrackTopbar />
 
-        <div className="content">
-          <div id="page-dashboard" className="page">
-            <div className="page-header">
-              <h2 id="dashTitle">Fevereiro 2026</h2>
-              <p>Resumo financeiro mensal · Atualizado agora</p>
-            </div>
-
-            <div className="kpi-grid">
-              <div className="kpi-card blue">
-                <div className="kpi-label">💳 Total do Mês</div>
-                <div className="kpi-value blue" id="kpiTotal">
-                  R$ 0
-                </div>
-                <div className="kpi-sub" id="kpiTotalSub">
-                  0 contas cadastradas
-                </div>
-              </div>
-              <div className="kpi-card green">
-                <div className="kpi-label">✅ Pago</div>
-                <div className="kpi-value green" id="kpiPago">
-                  R$ 0
-                </div>
-                <div className="kpi-progress">
-                  <div
-                    className="kpi-progress-fill"
-                    id="kpiPagoPct"
-                    style={{ width: 0 }}
-                  />
-                </div>
-                <div className="kpi-sub" id="kpiPagoSub">
-                  0% quitado
-                </div>
-              </div>
-              <div className="kpi-card yellow">
-                <div className="kpi-label">⏳ Pendente</div>
-                <div className="kpi-value yellow" id="kpiPend">
-                  R$ 0
-                </div>
-                <div className="kpi-sub" id="kpiPendSub">
-                  0 contas abertas
-                </div>
-              </div>
-              <div className="kpi-card red">
-                <div className="kpi-label" id="kpiDivTotalLabel">
-                  Dívida total
-                </div>
-                <div className="kpi-value" id="kpiDivTotal">
-                  R$ 0
-                </div>
-                <div className="kpi-sub" id="kpiDivTotalSub">
-                  Gastos − Renda
-                </div>
-              </div>
-            </div>
-
-            <div className="card card--fontes-rent">
-              <div className="card-header">
-                <span className="card-title">Fontes de renda</span>
-                <span
-                  className="card-action"
-                  onClick={() => {
-                    const navItems = document.querySelectorAll('.nav-item')
-                    navigate('fontes-renda', navItems[4] as HTMLElement)
-                  }}
-                >
-                  Ver fontes →
-                </span>
-              </div>
-              <div id="dashRendaBars" />
-            </div>
-
-            <div className="grid-3">
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Gastos por Conta</span>
-                  <span
-                    className="card-action"
-                    onClick={() => {
-                      const navItems = document.querySelectorAll('.nav-item')
-                      navigate('contas', navItems[1] as HTMLElement)
-                    }}
-                  >
-                    Ver todas →
-                  </span>
-                </div>
-                <div id="dashBars" />
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <span className="card-title">Distribuição</span>
-                </div>
-                <div className="donut-wrap" id="donutWrap">
-                  <svg
-                    className="donut-svg"
-                    width="110"
-                    height="110"
-                    viewBox="0 0 110 110"
-                    id="donutSvg"
-                  />
-                  <div className="donut-legend" id="donutLegend" />
-                </div>
-              </div>
-            </div>
-
-            <div className="card" style={{ marginBottom: 0 }}>
-              <div className="card-header">
-                <span className="card-title">Evolução Mensal</span>
-                <span
-                  className="card-action"
-                  onClick={() => {
-                    const navItems = document.querySelectorAll('.nav-item')
-                    navigate('historico', navItems[5] as HTMLElement)
-                  }}
-                >
-                  Ver histórico →
-                </span>
-              </div>
-              <div className="sparkline-bars" id="sparkBars" />
-            </div>
-          </div>
-
-          <div
-            id="page-contas"
-            className="page"
-            style={{ display: 'none' }}
-          >
-            <div
-              className="page-header"
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 12,
-              }}
-            >
-              <div>
-                <h2>Contas do Mês</h2>
-                <p id="contasMonthLabel">Mês atual</p>
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="btn btn-outline"
-                  type="button"
-                  onClick={openAccountModal}
-                >
-                  + Adicionar conta
-                </button>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  onClick={openLancamentoModal}
-                >
-                  + Adicionar lançamento
-                </button>
-              </div>
-            </div>
-
-            <div className="kpi-grid" style={{ marginBottom: 18 }}>
-              <div className="kpi-card blue">
-                <div className="kpi-label">Total</div>
-                <div
-                  className="kpi-value blue"
-                  style={{ fontSize: '1.2rem' }}
-                  id="c_kpiTotal"
-                >
-                  R$ 0
-                </div>
-              </div>
-              <div className="kpi-card green">
-                <div className="kpi-label">Pago</div>
-                <div
-                  className="kpi-value green"
-                  style={{ fontSize: '1.2rem' }}
-                  id="c_kpiPago"
-                >
-                  R$ 0
-                </div>
-              </div>
-              <div className="kpi-card yellow">
-                <div className="kpi-label">Pendente</div>
-                <div
-                  className="kpi-value yellow"
-                  style={{ fontSize: '1.2rem' }}
-                  id="c_kpiPend"
-                >
-                  R$ 0
-                </div>
-              </div>
-              <div className="kpi-card red">
-                <div className="kpi-label">Em Dívida</div>
-                <div
-                  className="kpi-value red"
-                  style={{ fontSize: '1.2rem' }}
-                  id="c_kpiDiv"
-                >
-                  R$ 0
-                </div>
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="bills-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Conta / Cartão</th>
-                      <th>Descrição</th>
-                      <th>Categoria</th>
-                      <th>Valor</th>
-                      <th>Status</th>
-                      <th>Obs.</th>
-                      <th>Recorrente</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody id="billsBody" />
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div
-            id="page-contas-cadastradas"
-            className="page"
-            style={{ display: 'none' }}
-          >
-            <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-              <div>
-                <h2>Contas cadastradas</h2>
-                <p>Métodos de pagamento e cartões usados nos lançamentos</p>
-              </div>
-              <button className="btn btn-primary" type="button" onClick={openAccountModal}>
-                + Nova conta
-              </button>
-            </div>
-            <div className="card">
-              <div id="contasCadastradasList" />
-            </div>
-          </div>
-
-          <div
-            id="page-categorias"
-            className="page"
-            style={{ display: 'none' }}
-          >
-            <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-              <div>
-                <h2>Categorias</h2>
-                <p>Controle as categorias usadas nos lançamentos</p>
-              </div>
-              <button className="btn btn-primary" type="button" onClick={openCategoryModal}>
-                + Nova categoria
-              </button>
-            </div>
-            <div className="card">
-              <div id="categoriasList" />
-            </div>
-          </div>
-
-          <div
-            id="page-fontes-renda"
-            className="page"
-            style={{ display: 'none' }}
-          >
-            <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-              <div>
-                <h2>Fontes de renda</h2>
-                <p>Cadastre fontes, marque como recorrente e adicione os valores recebidos no mês</p>
-              </div>
-              <button className="btn btn-primary" type="button" onClick={openFonteModal}>
-                + Nova fonte
-              </button>
-            </div>
-            <div className="card">
-              <div id="fontesRendaList" />
-            </div>
-          </div>
-
-          <div
-            id="page-importar"
-            className="page"
-            style={{ display: 'none' }}
-          >
-            <div className="page-header">
-              <h2>Importar Extrato PDF</h2>
-              <p>Leitura automática de lançamentos bancários direto no navegador</p>
-            </div>
-            <div className="card" style={{ marginBottom: 20 }}>
-              <div className="pdf-drop" id="dropZone">
-                <div className="drop-icon">📂</div>
-                <div className="drop-title">Arraste o PDF do extrato aqui</div>
-                <div className="drop-sub">
-                  ou clique para selecionar · Nenhum dado é enviado para
-                  servidores
-                </div>
-                <input
-                  type="file"
-                  id="pdfInput"
-                  accept=".pdf"
-                  onChange={(e) => handlePdf(e.target.files?.[0])}
-                />
-              </div>
-              <div className="processing-bar" id="pdfProc">
-                <div className="spinner" />
-                <span id="pdfStatus">Processando...</span>
-              </div>
-            </div>
-
-            <div id="extSection" style={{ display: 'none' }}>
-              <div className="ext-actions">
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{ fontWeight: 700, fontSize: '1rem' }}
-                    id="extCount"
-                  />
-                  <div
-                    style={{
-                      fontSize: '0.78rem',
-                      color: 'var(--text2)',
-                      marginTop: 3,
-                    }}
-                  >
-                    Ajuste categoria, valor e status antes de importar
-                  </div>
-                </div>
-                <button
-                  className="btn-ghost-sm"
-                  type="button"
-                  onClick={() => toggleAllExt(true)}
-                >
-                  Marcar todos
-                </button>
-                <button
-                  className="btn-ghost-sm"
-                  type="button"
-                  onClick={() => toggleAllExt(false)}
-                >
-                  Desmarcar
-                </button>
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  onClick={importSelected}
-                >
-                  ✅ Importar Selecionados
-                </button>
-              </div>
-              <div id="extItems" />
-              <div style={{ marginTop: 12 }}>
-                <span
-                  style={{
-                    fontSize: '0.76rem',
-                    color: 'var(--accent)',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
-                  onClick={() => {
-                    const box = document.getElementById('rawBox')
-                    if (!box) return
-                    box.style.display =
-                      box.style.display === 'none' || !box.style.display
-                        ? 'block'
-                        : 'none'
-                  }}
-                >
-                  🔍 Ver texto bruto do PDF
-                </span>
-                <div
-                  id="rawBox"
-                  style={{
-                    display: 'none',
-                    background: 'var(--surface2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: '0.72rem',
-                    color: 'var(--text3)',
-                    whiteSpace: 'pre-wrap',
-                    maxHeight: 180,
-                    overflowY: 'auto',
-                    marginTop: 8,
-                    fontFamily: 'monospace',
-                    lineHeight: 1.5,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div
-            id="page-historico"
-            className="page"
-            style={{ display: 'none' }}
-          >
-            <div className="page-header">
-              <h2>Histórico</h2>
-              <p>Todos os meses registrados</p>
-            </div>
-            <div className="history-grid" id="historyGrid">
-              <div className="empty">
-                <div className="em-icon">📅</div>
-                <p>
-                  Nenhum mês salvo ainda.
-                  <br />
-                  Salve o mês atual para começar.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <FinTrackContent />
       </div>
-
-      {/* Modal: Cadastro de conta (método de pagamento) */}
-      <div id="modalConta" className="modal" role="dialog" aria-labelledby="modalContaTitle">
-        <div className="modal-backdrop" onClick={closeAccountModal} />
-        <div className="modal-box">
-          <div className="modal-header">
-            <h3 id="modalContaTitle">Nova conta</h3>
-            <button type="button" className="modal-close" onClick={closeAccountModal} aria-label="Fechar">
-              ×
-            </button>
-          </div>
-          <div className="modal-body">
-            <div className="modal-field">
-              <label htmlFor="modalContaName">Nome da conta</label>
-              <input type="text" id="modalContaName" placeholder="Ex.: Nubank, Inter, Mercado Pago..." />
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalContaCardType">Tipo de cartão</label>
-              <select id="modalContaCardType">
-                <option value="nenhum">Nenhum</option>
-                <option value="credito">Crédito</option>
-                <option value="debito">Débito</option>
-              </select>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={closeAccountModal}>
-              Cancelar
-            </button>
-            <button type="button" className="btn btn-primary" onClick={saveNewAccount}>
-              Cadastrar conta
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal: Editar conta */}
-      <div id="modalEditConta" className="modal" role="dialog" aria-labelledby="modalEditContaTitle">
-        <div className="modal-backdrop" onClick={closeEditAccountModal} />
-        <div className="modal-box">
-          <div className="modal-header">
-            <h3 id="modalEditContaTitle">Editar conta</h3>
-            <button type="button" className="modal-close" onClick={closeEditAccountModal} aria-label="Fechar">
-              ×
-            </button>
-          </div>
-          <div className="modal-body">
-            <div className="modal-field">
-              <label htmlFor="modalEditContaName">Nome da conta</label>
-              <input type="text" id="modalEditContaName" placeholder="Ex.: Nubank, Inter..." />
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalEditContaCardType">Tipo de cartão</label>
-              <select id="modalEditContaCardType">
-                <option value="nenhum">Nenhum</option>
-                <option value="credito">Crédito</option>
-                <option value="debito">Débito</option>
-              </select>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={closeEditAccountModal}>
-              Cancelar
-            </button>
-            <button type="button" className="btn btn-primary" onClick={saveEditAccount}>
-              Salvar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal: Categoria */}
-      <div id="modalCategoria" className="modal" role="dialog">
-        <div className="modal-backdrop" onClick={closeCategoryModal} />
-        <div className="modal-box">
-          <div className="modal-header">
-            <h3 id="modalCategoriaTitle">Nova categoria</h3>
-            <button type="button" className="modal-close" onClick={closeCategoryModal} aria-label="Fechar">×</button>
-          </div>
-          <div className="modal-body">
-            <div className="modal-field">
-              <label htmlFor="modalCategoriaName">Nome</label>
-              <input type="text" id="modalCategoriaName" placeholder="Ex.: Moradia, Alimentação..." />
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalCategoriaColor">Cor</label>
-              <input type="color" id="modalCategoriaColor" style={{ width: 60, height: 36 }} />
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={closeCategoryModal}>Cancelar</button>
-            <button type="button" className="btn btn-primary" onClick={saveCategory}>Salvar</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal: Fonte de renda */}
-      <div id="modalFonte" className="modal" role="dialog">
-        <div className="modal-backdrop" onClick={closeFonteModal} />
-        <div className="modal-box">
-          <div className="modal-header">
-            <h3 id="modalFonteTitle">Nova fonte de renda</h3>
-            <button type="button" className="modal-close" onClick={closeFonteModal} aria-label="Fechar">×</button>
-          </div>
-          <div className="modal-body">
-            <div className="modal-field">
-              <label htmlFor="modalFonteName">Nome</label>
-              <input type="text" id="modalFonteName" placeholder="Ex.: Salário, Freela, Investimentos..." />
-            </div>
-            <label className="modal-field modal-field-check">
-              <input type="checkbox" id="modalFonteRecurring" /> Fonte recorrente (todo mês)
-            </label>
-            <div id="modalFonteValoresSection" style={{ display: 'none' }}>
-              <div id="modalFonteValoresWrap" />
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={closeFonteModal}>Cancelar</button>
-            <button type="button" className="btn btn-primary" onClick={saveFonte}>Salvar</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Modal: Novo lançamento */}
-      <div id="modalLancamento" className="modal" role="dialog" aria-labelledby="modalLancTitle">
-        <div className="modal-backdrop" onClick={closeLancamentoModal} />
-        <div className="modal-box">
-          <div className="modal-header">
-            <h3 id="modalLancTitle">Novo lançamento</h3>
-            <button type="button" className="modal-close" onClick={closeLancamentoModal} aria-label="Fechar">
-              ×
-            </button>
-          </div>
-          <div className="modal-body">
-            <div className="modal-field">
-              <label htmlFor="modalLancAccount">Conta</label>
-              <select id="modalLancAccount">
-                <option value="">Cadastre uma conta antes</option>
-              </select>
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalLancName">Descrição</label>
-              <input type="text" id="modalLancName" placeholder="Ex.: Luz, Supermercado, Parcela carro..." />
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalLancCat">Categoria</label>
-              <select id="modalLancCat">
-                <option value="">Carregando...</option>
-              </select>
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalLancValue">Valor (R$)</label>
-              <input type="number" id="modalLancValue" placeholder="0,00" step="0.01" min={0} />
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalLancStatus">Status</label>
-              <select id="modalLancStatus">
-                <option value="pendente">⏳ Pendente</option>
-                <option value="pago">✅ Pago</option>
-                <option value="divida">🔴 Dívida</option>
-              </select>
-            </div>
-            <div className="modal-field">
-              <label htmlFor="modalLancObs">Observação</label>
-              <input type="text" id="modalLancObs" placeholder="Opcional" />
-            </div>
-            <label className="modal-field modal-field-check">
-              <input type="checkbox" id="modalLancRecurring" /> Conta recorrente
-            </label>
-          </div>
-          <div className="modal-footer">
-            <button type="button" className="btn btn-outline" onClick={closeLancamentoModal}>
-              Fechar
-            </button>
-            <button type="button" className="btn btn-primary" onClick={saveLancamentoModal}>
-              Cadastrar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="toast" id="toast" />
-    </>
+    </FinTrackProvider>
   )
 }
 

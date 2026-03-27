@@ -1,0 +1,26 @@
+export type FinTrackCtx = {
+  navigate: (page: string, navEl?: Element | null) => void
+  goToPage: (page: string) => void
+  loadMonth: () => void
+  saveMonth: () => void
+  resetAllData: () => void
+  toggleSidebar: () => void
+  closeSidebar: () => void
+  openAccountModal: () => void
+  openLancamentoModal: () => void
+  openCategoryModal: () => void
+  openFonteModal: () => void
+  closeAccountModal: () => void
+  saveNewAccount: () => void
+  closeEditAccountModal: () => void
+  saveEditAccount: () => void
+  closeCategoryModal: () => void
+  saveCategory: () => void
+  closeFonteModal: () => void
+  saveFonte: () => void
+  closeLancamentoModal: () => void
+  saveLancamentoModal: () => void
+  handlePdf: (file: File | undefined) => void
+  toggleAllExt: (value: boolean) => void
+  importSelected: () => void
+}
