@@ -93,4 +93,12 @@ CREATE TABLE IF NOT EXISTS bill (
 
 CREATE INDEX IF NOT EXISTS idx_bill_month ON bill (workspace_id, month_key);
 
+-- Meses em que o utilizador já gravou lançamentos (permite “mês vazio” vs “nunca aberto”)
+CREATE TABLE IF NOT EXISTS month_saved (
+    workspace_id UUID NOT NULL REFERENCES workspace (id) ON DELETE CASCADE,
+    month_key TEXT NOT NULL,
+    saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, month_key)
+);
+
 COMMIT;

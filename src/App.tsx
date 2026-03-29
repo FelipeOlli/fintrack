@@ -22,7 +22,9 @@ import {
   getRecurringTemplates,
   getTotalMonthIncome,
   getValorUnicoFonte,
+  initPersistence,
   listBillsStorageKeysSorted,
+  persistenceUsesApi,
   readBillsMonth,
   saveAccounts,
   saveCategories,
@@ -1217,17 +1219,26 @@ declare global {
 
 function App() {
   useEffect(() => {
-    try {
-      if (typeof pdfjsLib !== 'undefined') {
-        pdfjsLib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
-      }
+    void (async () => {
+      try {
+        if (typeof pdfjsLib !== 'undefined') {
+          pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+        }
 
-      initMonthSel()
-      loadMonth()
-    } catch (err) {
-      console.error('Erro ao inicializar app:', err)
-    }
+        await initPersistence()
+        initMonthSel()
+        loadMonth()
+      } catch (err) {
+        console.error('Erro ao inicializar app:', err)
+        showToast(
+          persistenceUsesApi()
+            ? 'Não foi possível ligar à API (dados). Verifique VITE_API_URL e o servidor.'
+            : 'Erro ao inicializar.',
+          true,
+        )
+      }
+    })()
 
     const dz = document.getElementById('dropZone')
     if (dz) {
