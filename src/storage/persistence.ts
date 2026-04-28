@@ -183,6 +183,12 @@ export function getTotalMonthIncome(monthKey: string): number {
   return getMonthIncome(monthKey).reduce((s, e) => s + e.value, 0)
 }
 
+/** Total considerando fallback de fontes recorrentes sem valor no mês. */
+export function getTotalMonthIncomeWithFallback(monthKey: string): number {
+  const sources = getIncomeSources()
+  return sources.reduce((sum, s) => sum + getValorFonteComFallback(monthKey, s.id, s.recurring), 0)
+}
+
 export function getRecurringTemplates(): RecurringTemplate[] {
   if (!persistenceUsesApi()) {
     try {
@@ -297,6 +303,42 @@ export function getValorUnicoFonte(monthKey: string, sourceId: string): number {
   const entries = getMonthIncome(monthKey).filter((e) => e.sourceId === sourceId)
   if (entries.length === 0) return 0
   return entries.reduce((s, e) => s + e.value, 0)
+}
+
+/**
+ * Retorna o valor da fonte para o mês.
+ * Se não houver valor explícito e a fonte for recorrente,
+ * busca o último valor salvo em meses anteriores.
+ */
+export function getValorFonteComFallback(
+  monthKey: string,
+  sourceId: string,
+  recurring: boolean,
+): number {
+  const explicit = getValorUnicoFonte(monthKey, sourceId)
+  if (explicit > 0) return explicit
+  if (!recurring) return 0
+
+  // Busca em meses anteriores (ordem decrescente)
+  const pastMonthKeys = listPastMonthKeys(monthKey)
+  for (const mk of pastMonthKeys) {
+    const v = getValorUnicoFonte(mk, sourceId)
+    if (v > 0) return v
+  }
+  return 0
+}
+
+/** Lista chaves de mês com income salvo, antes de monthKey, em ordem decrescente. */
+function listPastMonthKeys(beforeMonthKey: string): string[] {
+  let keys: string[]
+  if (!persistenceUsesApi()) {
+    keys = Object.keys(localStorage)
+      .filter((k) => k.startsWith('income_'))
+      .map((k) => k.slice('income_'.length))
+  } else {
+    keys = Object.keys(needCache().monthIncome)
+  }
+  return keys.filter((k) => k < beforeMonthKey).sort().reverse()
 }
 
 export function setValorUnicoFonte(monthKey: string, sourceId: string, value: number): void {

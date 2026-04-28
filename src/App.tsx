@@ -22,7 +22,8 @@ import {
   getIncomeSources,
   getRecurringBillsAsBills,
   getRecurringTemplates,
-  getTotalMonthIncome,
+  getTotalMonthIncomeWithFallback,
+  getValorFonteComFallback,
   getValorUnicoFonte,
   initPersistence,
   listBillsStorageKeysSorted,
@@ -296,7 +297,7 @@ function renderFontesRendaPage() {
         <tbody>
           ${sources
             .map((s) => {
-              const valorUnico = getValorUnicoFonte(session.currentMonth, s.id)
+              const valorUnico = getValorFonteComFallback(session.currentMonth, s.id, s.recurring)
               const valoresDisplay = valorUnico > 0 ? fmt(valorUnico) : '—'
               return `
             <tr>
@@ -329,12 +330,19 @@ function renderFontesRendaPage() {
 function renderModalFonteValores(fonteId: string) {
   const wrap = document.getElementById('modalFonteValoresWrap')
   if (!wrap) return
-  const valorUnico = getValorUnicoFonte(session.currentMonth, fonteId)
+  const source = getIncomeSources().find((s) => s.id === fonteId)
+  const recurring = source?.recurring ?? false
+  const explicitValue = getValorUnicoFonte(session.currentMonth, fonteId)
+  const valorUnico = getValorFonteComFallback(session.currentMonth, fonteId, recurring)
+  const isFallback = recurring && explicitValue === 0 && valorUnico > 0
+  const hint = isFallback
+    ? `<p style="color:var(--text3);font-size:0.8rem;margin:6px 0 0">🔄 Valor herdado do mês anterior. Salve para fixar neste mês.</p>`
+    : `<p style="color:var(--text3);font-size:0.8rem;margin:6px 0 0">Um único valor por fonte no mês. Salve para aplicar.</p>`
   wrap.innerHTML = `
     <div class="modal-field" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <label htmlFor="modalFonteValorInput">Valor no mês (R$)</label>
       <input type="number" id="modalFonteValorInput" step="0.01" min="0" placeholder="0,00" value="${valorUnico > 0 ? valorUnico : ''}" style="width:140px" />
-      <p style="color:var(--text3);font-size:0.8rem;margin:6px 0 0">Um único valor por fonte no mês. Salve para aplicar.</p>
+      ${hint}
     </div>
   `
 }
@@ -619,7 +627,7 @@ function calcTotals() {
       ndiv++
     }
   })
-  const renda = getTotalMonthIncome(session.currentMonth)
+  const renda = getTotalMonthIncomeWithFallback(session.currentMonth)
   const diffRenda = total - renda
   const divRenda = Math.abs(diffRenda)
   return {
@@ -970,7 +978,7 @@ function renderDashCharts() {
 function renderRendaChart() {
   const el = document.getElementById('dashRendaBars')
   if (!el) return
-  const renda = getTotalMonthIncome(session.currentMonth)
+  const renda = getTotalMonthIncomeWithFallback(session.currentMonth)
   const t = calcTotals()
   const scale = Math.max(renda, t.total, 1)
   const rendaRestante = Math.max(0, renda - t.pago)
