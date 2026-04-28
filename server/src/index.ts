@@ -42,7 +42,8 @@ type Bill = {
 const fastify = Fastify({ logger: true })
 
 await fastify.register(cors, {
-  origin: process.env.CORS_ORIGIN === '*' ? true : (process.env.CORS_ORIGIN || true),
+  origin: true,
+  methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
 })
 
 fastify.get('/health', async () => ({ ok: true }))
