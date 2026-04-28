@@ -43,7 +43,10 @@ type ApiCache = {
   billsByMonth: Record<string, Bill[]>
 }
 
-let apiCache: ApiCache | null = null
+// Inicializa com arrays vazios em modo API para evitar erros antes do bootstrap
+let apiCache: ApiCache | null = persistenceUsesApi()
+  ? { accounts: [], categories: [], incomeSources: [], recurringTemplates: [], monthIncome: {}, billsByMonth: {} }
+  : null
 
 function buildUrl(rel: string): string {
   const base = apiBase()
