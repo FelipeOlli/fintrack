@@ -983,6 +983,9 @@ td select:focus {
 
 .td-actions {
   white-space: nowrap;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .add-bill-bar {

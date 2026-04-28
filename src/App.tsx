@@ -491,12 +491,12 @@ function renderBills() {
       </td>
       <td><input type="text" value="${esc(bill.obs || '')}" placeholder="Nota..."></td>
       <td class="td-recorrente">${recorrenteCell}</td>
-      <td class="td-actions"><button type="button" class="btn-ghost-sm btn-edit-bill" data-i="${i}">Editar</button><button class="btn-icon">🗑</button></td>
+      <td class="td-actions"><button type="button" class="btn-ghost-sm btn-edit-bill" data-i="${i}">Editar</button><button type="button" class="btn-icon btn-del-bill">🗑</button></td>
     `
     const valueInput = tr.querySelector('input[type="number"]') as HTMLInputElement
     const statusSelect = tr.querySelector('select') as HTMLSelectElement
     const obsInput = tr.querySelector('input[type="text"]') as HTMLInputElement
-    const removeBtn = tr.querySelector('td:last-child button') as HTMLButtonElement
+    const removeBtn = tr.querySelector('.btn-del-bill') as HTMLButtonElement
     valueInput?.addEventListener('change', () =>
       ubill(i, 'value', valueInput.value),
     )
