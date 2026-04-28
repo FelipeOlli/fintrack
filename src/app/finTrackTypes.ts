@@ -23,4 +23,7 @@ export type FinTrackCtx = {
   handlePdf: (file: File | undefined) => void
   toggleAllExt: (value: boolean) => void
   importSelected: () => void
+  buildAndShowPreview: () => void
+  importConfirmed: () => void
+  setImportStep: (step: number) => void
 }

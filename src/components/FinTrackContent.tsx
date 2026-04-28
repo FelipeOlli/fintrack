@@ -279,107 +279,174 @@ export function FinTrackContent() {
         style={{ display: 'none' }}
       >
         <div className="page-header">
-          <h2>Importar Extrato PDF</h2>
-          <p>Leitura automática de lançamentos bancários direto no navegador</p>
+          <h2>Importar Fatura / Extrato</h2>
+          <p>Importe faturas de cartão com detecção de parcelas e projeção futura</p>
         </div>
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="pdf-drop" id="dropZone">
-            <div className="drop-icon">📂</div>
-            <div className="drop-title">Arraste o PDF do extrato aqui</div>
-            <div className="drop-sub">
-              ou clique para selecionar · Nenhum dado é enviado para
-              servidores
-            </div>
-            <input
-              type="file"
-              id="pdfInput"
-              accept=".pdf"
-              onChange={(e) => ft.handlePdf(e.target.files?.[0])}
-            />
+
+        {/* ── Step 0: Upload ── */}
+        <div id="importStep0">
+          <div className="card" style={{ marginBottom: 16 }}>
+            <label style={{ fontWeight: 600, fontSize: '0.88rem', display: 'block', marginBottom: 8 }}>
+              Cartão / Conta da fatura
+            </label>
+            <select
+              id="importAccountSelect"
+              className="form-select"
+              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', fontSize: '0.88rem' }}
+              onChange={(e) => {
+                if (window.__importAccountChange) window.__importAccountChange(e.target.value)
+              }}
+            >
+              <option value="">Selecione a conta / cartão</option>
+            </select>
           </div>
-          <div className="processing-bar" id="pdfProc">
-            <div className="spinner" />
-            <span id="pdfStatus">Processando...</span>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="pdf-drop" id="dropZone">
+              <div className="drop-icon">📂</div>
+              <div className="drop-title">Arraste o PDF da fatura aqui</div>
+              <div className="drop-sub">
+                ou clique para selecionar
+              </div>
+              <input
+                type="file"
+                id="pdfInput"
+                accept=".pdf"
+                onChange={(e) => ft.handlePdf(e.target.files?.[0])}
+              />
+            </div>
+            <div className="processing-bar" id="pdfProc">
+              <div className="spinner" />
+              <span id="pdfStatus">Processando...</span>
+            </div>
           </div>
         </div>
 
-        <div id="extSection" style={{ display: 'none' }}>
-          <div className="ext-actions">
-            <div style={{ flex: 1 }}>
-              <div
-                style={{ fontWeight: 700, fontSize: '1rem' }}
-                id="extCount"
-              />
-              <div
+        {/* ── Step 1: Revisão de itens ── */}
+        <div id="importStep1" style={{ display: 'none' }}>
+          <div id="extSection" style={{ display: 'none' }}>
+            <div className="ext-actions">
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{ fontWeight: 700, fontSize: '1rem' }}
+                  id="extCount"
+                />
+                <div
+                  style={{
+                    fontSize: '0.78rem',
+                    color: 'var(--text2)',
+                    marginTop: 3,
+                  }}
+                >
+                  Ajuste categoria, valor e status. Parcelas detectadas aparecem com badge azul.
+                </div>
+              </div>
+              <button
+                className="btn-ghost-sm"
+                type="button"
+                onClick={() => ft.toggleAllExt(true)}
+              >
+                Marcar todos
+              </button>
+              <button
+                className="btn-ghost-sm"
+                type="button"
+                onClick={() => ft.toggleAllExt(false)}
+              >
+                Desmarcar
+              </button>
+            </div>
+            <div id="extItems" />
+            <div className="import-step-nav" style={{ marginTop: 16 }}>
+              <button
+                className="btn-ghost-sm"
+                type="button"
+                onClick={() => ft.setImportStep(0)}
+              >
+                Voltar
+              </button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={ft.buildAndShowPreview}
+              >
+                Projetar parcelas e verificar duplicatas
+              </button>
+              <button
+                className="btn-ghost-sm"
+                type="button"
+                onClick={ft.importSelected}
+                style={{ fontSize: '0.78rem' }}
+              >
+                Importar direto (sem projeção)
+              </button>
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <span
                 style={{
-                  fontSize: '0.78rem',
-                  color: 'var(--text2)',
-                  marginTop: 3,
+                  fontSize: '0.76rem',
+                  color: 'var(--accent)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+                onClick={() => {
+                  const box = document.getElementById('rawBox')
+                  if (!box) return
+                  box.style.display =
+                    box.style.display === 'none' || !box.style.display
+                      ? 'block'
+                      : 'none'
                 }}
               >
-                Ajuste categoria, valor e status antes de importar
-              </div>
+                Ver texto bruto do PDF
+              </span>
+              <div
+                id="rawBox"
+                style={{
+                  display: 'none',
+                  background: 'var(--surface2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: '0.72rem',
+                  color: 'var(--text3)',
+                  whiteSpace: 'pre-wrap',
+                  maxHeight: 180,
+                  overflowY: 'auto',
+                  marginTop: 8,
+                  fontFamily: 'monospace',
+                  lineHeight: 1.5,
+                }}
+              />
             </div>
-            <button
-              className="btn-ghost-sm"
-              type="button"
-              onClick={() => ft.toggleAllExt(true)}
-            >
-              Marcar todos
-            </button>
-            <button
-              className="btn-ghost-sm"
-              type="button"
-              onClick={() => ft.toggleAllExt(false)}
-            >
-              Desmarcar
-            </button>
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={ft.importSelected}
-            >
-              ✅ Importar Selecionados
-            </button>
           </div>
-          <div id="extItems" />
-          <div style={{ marginTop: 12 }}>
-            <span
-              style={{
-                fontSize: '0.76rem',
-                color: 'var(--accent)',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-              onClick={() => {
-                const box = document.getElementById('rawBox')
-                if (!box) return
-                box.style.display =
-                  box.style.display === 'none' || !box.style.display
-                    ? 'block'
-                    : 'none'
-              }}
-            >
-              🔍 Ver texto bruto do PDF
-            </span>
-            <div
-              id="rawBox"
-              style={{
-                display: 'none',
-                background: 'var(--surface2)',
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: 12,
-                fontSize: '0.72rem',
-                color: 'var(--text3)',
-                whiteSpace: 'pre-wrap',
-                maxHeight: 180,
-                overflowY: 'auto',
-                marginTop: 8,
-                fontFamily: 'monospace',
-                lineHeight: 1.5,
-              }}
-            />
+        </div>
+
+        {/* ���─ Step 2: Preview projeção + deduplicação ── */}
+        <div id="importStep2" style={{ display: 'none' }}>
+          <div className="card">
+            <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 8 }}>
+              Projeção de importação
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text2)', marginBottom: 16 }}>
+              Itens duplicados já foram desmarcados. Revise e confirme.
+            </div>
+            <div id="importPreviewContent" />
+            <div className="import-step-nav" style={{ marginTop: 16 }}>
+              <button
+                className="btn-ghost-sm"
+                type="button"
+                onClick={() => ft.setImportStep(1)}
+              >
+                Voltar
+              </button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={ft.importConfirmed}
+              >
+                Confirmar importação
+              </button>
+            </div>
           </div>
         </div>
       </div>

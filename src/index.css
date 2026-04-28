@@ -2306,3 +2306,102 @@ body {
   background: rgba(113, 113, 122, 0.25);
   color: var(--text2);
 }
+
+/* ── Import wizard ── */
+.installment-badge {
+  display: inline-block;
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.import-month-group {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.import-month-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 0.88rem;
+}
+
+.import-month-header span {
+  font-size: 0.76rem;
+  color: var(--text2);
+}
+
+.import-step-nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.match-duplicate {
+  opacity: 0.45;
+}
+
+.match-duplicate .ext-name {
+  text-decoration: line-through;
+}
+
+.match-similar {
+  border-left: 3px solid var(--amber);
+  padding-left: 8px;
+}
+
+.dup-badge {
+  display: inline-block;
+  background: rgba(113, 113, 122, 0.25);
+  color: var(--text2);
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
+.sim-badge {
+  display: inline-block;
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--amber);
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
+.new-badge {
+  display: inline-block;
+  background: rgba(52, 211, 153, 0.18);
+  color: var(--green);
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
+.ext-val {
+  font-weight: 600;
+  font-size: 0.84rem;
+  min-width: 80px;
+  text-align: right;
+}
+
+.ext-cat {
+  font-size: 0.76rem;
+  color: var(--text2);
+  min-width: 90px;
+}

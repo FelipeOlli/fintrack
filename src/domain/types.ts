@@ -37,6 +37,12 @@ export type ExtractedItem = {
   category: string
   status: BillStatus
   selected: boolean
+  installmentCurrent?: number
+  installmentTotal?: number
+  cleanName?: string
+  targetMonths?: string[]
+  matchStatus?: 'new' | 'duplicate' | 'similar'
+  matchedMonthKey?: string
 }
 
 export type RecurringValueMode = 'same' | 'zero'

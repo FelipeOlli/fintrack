@@ -262,6 +262,12 @@ export function writeBillsMonth(monthKey: string, bills: Bill[]): void {
   void apiPut(`api/bills/${encodeURIComponent(monthKey)}`, { bills })
 }
 
+/** Lê bills existentes, concatena novos, e salva. */
+export function appendBillsToMonth(monthKey: string, newBills: Bill[]): void {
+  const existing = readBillsMonth(monthKey) ?? []
+  writeBillsMonth(monthKey, [...existing, ...newBills])
+}
+
 /** Chaves `bills_*` ordenadas (lexicográfico = ordem cronológica com YYYY_MM). */
 export function listBillsStorageKeysSorted(): string[] {
   if (!persistenceUsesApi()) {

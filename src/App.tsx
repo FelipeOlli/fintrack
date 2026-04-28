@@ -11,9 +11,11 @@ import { CAT_COLORS, IMPORT_CATEGORY_OPTIONS, MONTHS } from './constants/categor
 import type { Bill, BillStatus, CardType, RecurringValueMode } from './domain/types'
 import { bumpDash } from './lib/dashboardSync'
 import { esc, fmt, setText } from './lib/format'
+import { buildImportProjection } from './lib/importProjection'
 import { parseTransactionsFromText } from './lib/pdfImportFromText'
 import { mkKey } from './storage/keys'
 import {
+  appendBillsToMonth,
   clearAllBillsMonths,
   getAccounts,
   getCategories,
@@ -1050,8 +1052,52 @@ async function handlePdf(file: File | null | undefined) {
     }
     session.rawText = txt
     status.textContent = `Analisando lançamentos...`
-    session.extractedData = parseTransactionsFromText(txt)
+
+    // Tenta API do Claude se backend disponível
+    let usedApi = false
+    if (persistenceUsesApi()) {
+      try {
+        const catNames = getCategories().map((c) => c.name)
+        const base = import.meta.env.VITE_API_URL || ''
+        const url = base.startsWith('http') ? base : ''
+        const res = await fetch(`${url}/api/parse-invoice`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: txt, categories: catNames }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data.items) && data.items.length > 0) {
+            session.extractedData = data.items.map((it: {
+              name: string; value: number; category: string;
+              installmentCurrent?: number; installmentTotal?: number; cleanName?: string;
+            }) => ({
+              name: (it.name || 'Lançamento').slice(0, 60),
+              value: it.value || 0,
+              category: it.category || 'Outros',
+              status: 'pendente' as BillStatus,
+              selected: true,
+              ...(it.installmentCurrent && it.installmentTotal ? {
+                installmentCurrent: it.installmentCurrent,
+                installmentTotal: it.installmentTotal,
+                cleanName: it.cleanName || it.name,
+              } : {}),
+            }))
+            usedApi = true
+          }
+        }
+      } catch {
+        // fallback silencioso para parser local
+      }
+    }
+
+    if (!usedApi) {
+      session.extractedData = parseTransactionsFromText(txt)
+    }
+
+    session.importStep = 1
     renderExtracted()
+    renderImportSteps()
     proc.classList.remove('visible')
   } catch {
     proc.classList.remove('visible')
@@ -1080,7 +1126,11 @@ function renderExtracted() {
       <input type="checkbox" id="ec${i}" ${
         it.selected ? 'checked' : ''
       } onchange="window.__extToggle && window.__extToggle(${i}, this.checked)">
-      <label for="ec${i}" class="ext-name">${esc(it.name)}</label>
+      <label for="ec${i}" class="ext-name">${esc(it.name)}${
+        it.installmentCurrent && it.installmentTotal
+          ? ` <span class="installment-badge">Parc ${it.installmentCurrent}/${it.installmentTotal}</span>`
+          : ''
+      }</label>
       <select onchange="window.__extUpdateCat && window.__extUpdateCat(${i}, this.value)">
         ${IMPORT_CATEGORY_OPTIONS.map(
           (c) =>
@@ -1140,6 +1190,158 @@ function importSelected() {
   )
 }
 
+function renderImportSteps() {
+  const step0 = document.getElementById('importStep0')
+  const step1 = document.getElementById('importStep1')
+  const step2 = document.getElementById('importStep2')
+  if (!step0 || !step1 || !step2) return
+  step0.style.display = session.importStep === 0 ? 'block' : 'none'
+  step1.style.display = session.importStep === 1 ? 'block' : 'none'
+  step2.style.display = session.importStep === 2 ? 'block' : 'none'
+}
+
+function setImportStep(step: number) {
+  session.importStep = step
+  renderImportSteps()
+  if (step === 0) {
+    renderImportAccountSelector()
+  }
+}
+
+function renderImportAccountSelector() {
+  const sel = document.getElementById('importAccountSelect') as HTMLSelectElement | null
+  if (!sel) return
+  const accounts = getAccounts()
+  const credit = accounts.filter((a) => a.cardType === 'credito')
+  const others = accounts.filter((a) => a.cardType !== 'credito')
+  sel.innerHTML =
+    '<option value="">Selecione a conta / cartão</option>' +
+    [...credit, ...others]
+      .map(
+        (a) =>
+          `<option value="${a.id}" ${a.id === session.importAccountId ? 'selected' : ''}>${esc(a.name)}${a.cardType === 'credito' ? ' (Crédito)' : a.cardType === 'debito' ? ' (Débito)' : ''}</option>`,
+      )
+      .join('')
+}
+
+function formatMonthLabel(monthKey: string): string {
+  const [y, m] = monthKey.split('_').map(Number)
+  return `${MONTHS[m - 1] || monthKey} ${y}`
+}
+
+function buildAndShowPreview() {
+  const sel = session.extractedData.filter((i) => i.selected)
+  if (sel.length === 0) {
+    showToast('Nenhum item selecionado', true)
+    return
+  }
+  session.importProjection = buildImportProjection(sel, session.currentMonth)
+  session.importStep = 2
+  renderImportSteps()
+  renderImportPreview()
+}
+
+function renderImportPreview() {
+  const container = document.getElementById('importPreviewContent')
+  if (!container) return
+
+  const monthKeys = Object.keys(session.importProjection).sort()
+  if (monthKeys.length === 0) {
+    container.innerHTML = '<p>Nenhum item para importar.</p>'
+    return
+  }
+
+  let html = ''
+  let globalIdx = 0
+
+  for (const mk of monthKeys) {
+    const items = session.importProjection[mk]
+    const dupes = items.filter((i) => i.matchStatus === 'duplicate').length
+    const total = items.length
+
+    html += `<div class="import-month-group">
+      <div class="import-month-header">
+        <strong>${esc(formatMonthLabel(mk))}</strong>
+        <span>${total} ite${total === 1 ? 'm' : 'ns'}${dupes > 0 ? ` · ${dupes} duplicado${dupes > 1 ? 's' : ''}` : ''}</span>
+      </div>`
+
+    for (const item of items) {
+      const isDup = item.matchStatus === 'duplicate'
+      const isSim = item.matchStatus === 'similar'
+      const cls = isDup ? 'match-duplicate' : isSim ? 'match-similar' : ''
+      const badge = isDup
+        ? `<span class="dup-badge">Duplicado</span>`
+        : isSim
+          ? `<span class="sim-badge">Similar</span>`
+          : `<span class="new-badge">Novo</span>`
+
+      html += `<div class="ext-item ${cls}">
+        <input type="checkbox" id="ip${globalIdx}" ${item.selected ? 'checked' : ''}
+          onchange="window.__importPreviewToggle && window.__importPreviewToggle('${mk}', ${items.indexOf(item)}, this.checked)">
+        <label for="ip${globalIdx}" class="ext-name">${esc(item.name)} ${badge}</label>
+        <span class="ext-val">${fmt(item.value)}</span>
+        <span class="ext-cat">${esc(item.category)}</span>
+      </div>`
+      globalIdx++
+    }
+    html += '</div>'
+  }
+
+  container.innerHTML = html
+}
+
+function importConfirmed() {
+  const projection = session.importProjection
+  const monthKeys = Object.keys(projection)
+  let totalImported = 0
+
+  for (const mk of monthKeys) {
+    const items = projection[mk].filter((i) => i.selected)
+    if (items.length === 0) continue
+
+    const bills: Bill[] = items.map((it) => ({
+      name: it.name,
+      category: it.category,
+      value: it.value,
+      status: it.status,
+      obs: it.installmentCurrent && it.installmentTotal
+        ? `Fatura PDF · Parc ${it.installmentCurrent}/${it.installmentTotal}`
+        : 'Fatura PDF',
+      ...(session.importAccountId ? { accountId: session.importAccountId } : {}),
+    }))
+
+    if (mk === session.currentMonth) {
+      session.currentBills.push(...bills)
+      autoSave()
+    } else {
+      appendBillsToMonth(mk, bills)
+    }
+    totalImported += bills.length
+  }
+
+  if (totalImported === 0) {
+    showToast('Nenhum item selecionado para importar', true)
+    return
+  }
+
+  renderBills()
+  updateKPIs()
+  renderDashCharts()
+  showToast(`${totalImported} lançamento(s) importado(s) em ${monthKeys.length} mês(es)!`)
+
+  // Reset wizard
+  session.importStep = 0
+  session.importProjection = {}
+  session.extractedData = []
+  session.importAccountId = ''
+  renderImportSteps()
+
+  navigate(
+    'contas',
+    document.querySelector('[data-nav-page="contas"]') as HTMLElement,
+  )
+}
+
 function navigate(page: string, navEl?: Element | null) {
   document.querySelectorAll<HTMLElement>('.page').forEach((p) => {
     p.style.display = 'none'
@@ -1156,7 +1358,7 @@ function navigate(page: string, navEl?: Element | null) {
     'contas-cadastradas': ['Contas cadastradas', 'Métodos de pagamento e cartões'],
     categorias: ['Categorias', 'Controle de categorias de gastos'],
     'fontes-renda': ['Fontes de renda', 'Cadastre fontes e adicione os valores do mês'],
-    importar: ['Importar Extrato', 'Leitura automática de PDF'],
+    importar: ['Importar Fatura / Extrato', 'Importe faturas de cartão com projeção de parcelas'],
     historico: ['Histórico', 'Todos os meses registrados'],
   }
   const t = titles[page] || ['', '']
@@ -1178,6 +1380,10 @@ function navigate(page: string, navEl?: Element | null) {
   }
   if (page === 'fontes-renda') {
     renderFontesRendaPage()
+  }
+  if (page === 'importar') {
+    renderImportAccountSelector()
+    renderImportSteps()
   }
 }
 
@@ -1214,6 +1420,8 @@ declare global {
     __extUpdateCat?: (i: number, cat: string) => void
     __extUpdateVal?: (i: number, value: string) => void
     __extUpdateStatus?: (i: number, status: string) => void
+    __importPreviewToggle?: (monthKey: string, idx: number, checked: boolean) => void
+    __importAccountChange?: (accountId: string) => void
   }
 }
 
@@ -1272,6 +1480,13 @@ function App() {
       if (!session.extractedData[i]) return
       session.extractedData[i].status = status as BillStatus
     }
+    window.__importPreviewToggle = (monthKey, idx, checked) => {
+      const items = session.importProjection[monthKey]
+      if (items && items[idx]) items[idx].selected = checked
+    }
+    window.__importAccountChange = (accountId) => {
+      session.importAccountId = accountId
+    }
   }, [])
 
   const finTrackApi = useMemo<FinTrackCtx>(
@@ -1303,6 +1518,9 @@ function App() {
       handlePdf,
       toggleAllExt,
       importSelected,
+      buildAndShowPreview,
+      importConfirmed,
+      setImportStep,
     }),
     [],
   )

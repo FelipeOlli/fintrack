@@ -9,4 +9,7 @@ export const session = {
   editingAccountId: null as string | null,
   editingCategoryId: null as string | null,
   editingFonteId: null as string | null,
+  importAccountId: '' as string,
+  importStep: 0 as number,
+  importProjection: {} as Record<string, ExtractedItem[]>,
 }

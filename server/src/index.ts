@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk'
 import cors from '@fastify/cors'
 import Fastify from 'fastify'
 import pg from 'pg'
@@ -341,6 +342,82 @@ fastify.delete<{ Querystring: { workspaceId?: string } }>(
     return { ok: true }
   },
 )
+
+// ── Parse de fatura via Claude ────────────────────────────────
+type ParsedInvoiceItem = {
+  name: string
+  value: number
+  category: string
+  installmentCurrent?: number
+  installmentTotal?: number
+  cleanName?: string
+}
+
+fastify.post<{
+  Body: { text: string; categories: string[] }
+}>('/api/parse-invoice', async (request, reply) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return reply.status(501).send({ error: 'ANTHROPIC_API_KEY não configurada' })
+  }
+
+  const { text, categories } = request.body
+  if (!text || typeof text !== 'string') {
+    return reply.status(400).send({ error: 'Campo "text" obrigatório' })
+  }
+
+  const catList = (categories ?? []).join(', ') || 'Moradia, Transporte, Alimentação, Saúde, Lazer, Financeiro, Outros'
+
+  const anthropic = new Anthropic({ apiKey })
+
+  const msg = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    messages: [
+      {
+        role: 'user',
+        content: `Você é um parser de faturas de cartão de crédito brasileiras.
+
+Analise o texto abaixo extraído de um PDF de fatura e retorne SOMENTE um JSON array com as transações encontradas.
+
+Para cada transação retorne:
+- "name": descrição limpa (sem datas, sem códigos longos, max 60 chars)
+- "value": valor em reais (number, positivo)
+- "category": uma das categorias: ${catList}
+- "installmentCurrent": número da parcela atual (se houver, ex: 3 em "PARC 3/12"), ou null
+- "installmentTotal": total de parcelas (se houver, ex: 12 em "PARC 3/12"), ou null
+- "cleanName": nome sem sufixo de parcela (ex: "AMAZON" a partir de "AMAZON PARC 3/12"), ou null
+
+Regras:
+- Ignore linhas de cabeçalho, saldos, totais, pagamentos da fatura e encargos/juros.
+- Valores devem ser positivos. Se aparecer negativo (crédito/estorno), ignore.
+- Detecte parcelas nos padrões: "PARC 3/12", "03/12" no final, "PARCELA 3 DE 12".
+- Retorne APENAS o JSON array, sem markdown, sem explicação.
+
+Texto da fatura:
+${text}`,
+      },
+    ],
+  })
+
+  const content = msg.content[0]
+  if (content.type !== 'text') {
+    return reply.status(500).send({ error: 'Resposta inesperada do Claude' })
+  }
+
+  try {
+    const raw = content.text.trim()
+    const jsonStr = raw.startsWith('[') ? raw : raw.match(/\[[\s\S]*\]/)?.[0]
+    if (!jsonStr) throw new Error('JSON array não encontrado')
+    const items: ParsedInvoiceItem[] = JSON.parse(jsonStr)
+    return { items }
+  } catch {
+    return reply.status(500).send({
+      error: 'Falha ao parsear resposta do Claude',
+      raw: content.text,
+    })
+  }
+})
 
 try {
   await fastify.listen({ port: PORT, host: '0.0.0.0' })

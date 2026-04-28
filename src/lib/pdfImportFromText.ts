@@ -9,6 +9,26 @@ export function guessCategoryFromDescription(d: string): string {
   return 'Outros'
 }
 
+/** Detecta padrão de parcela em descrição (ex: "AMAZON 03/12", "PARC 2/6"). */
+export function detectInstallment(
+  desc: string,
+): { current: number; total: number; cleanName: string } | null {
+  const patterns: RegExp[] = [
+    /PARC(?:ELA)?\s*(\d{1,2})\s*[/\\]\s*(\d{1,2})/i,
+    /(\d{1,2})\s*[/\\]\s*(\d{1,2})\s*$/,
+  ]
+  for (const re of patterns) {
+    const m = desc.match(re)
+    if (!m) continue
+    const current = parseInt(m[1], 10)
+    const total = parseInt(m[2], 10)
+    if (current < 1 || current > total || total < 2 || total > 48) continue
+    const cleanName = desc.replace(m[0], '').trim().replace(/\s{2,}/g, ' ')
+    return { current, total, cleanName: cleanName || desc }
+  }
+  return null
+}
+
 /**
  * Heurística de linhas de extrato; limita a 80 itens.
  * Testável sem PDF.js (ver testes com string de exemplo).
@@ -48,12 +68,18 @@ export function parseTransactionsFromText(text: string): ExtractedItem[] {
       const key = desc.toLowerCase().slice(0, 20) + val
       if (seen.has(key)) return
       seen.add(key)
+      const inst = detectInstallment(desc)
       results.push({
         name: desc,
         value: val,
         category: cat,
         status: 'pago' as BillStatus,
         selected: true,
+        ...(inst && {
+          installmentCurrent: inst.current,
+          installmentTotal: inst.total,
+          cleanName: inst.cleanName,
+        }),
       })
     })
   })
