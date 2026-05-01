@@ -96,9 +96,6 @@ export function FinTrackSidebar() {
       </button>
 
       <div className="sidebar-footer">
-        <button className="btn-save btn-save--magik" type="button" onClick={ft.saveMonth}>
-          Salvar mês
-        </button>
         <button
           className="btn-ghost-sm btn-ghost-sidebar"
           type="button"

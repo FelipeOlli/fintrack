@@ -581,11 +581,10 @@ function loadMonth() {
   renderDashCharts()
   renderHistory()
   updatePendBadge()
-}
-
-function saveMonth() {
-  autoSave()
-  showToast('💾 Mês salvo com sucesso!')
+  if (session.currentPage === 'fontes-renda') renderFontesRendaPage()
+  if (session.currentPage === 'contas-cadastradas') renderContasCadastradas()
+  if (session.currentPage === 'categorias') renderCategoriasPage()
+  if (session.currentPage === 'importar') renderImportAccountSelector()
 }
 
 function autoSave() {
@@ -1360,6 +1359,7 @@ function importConfirmed() {
 }
 
 function navigate(page: string, navEl?: Element | null) {
+  session.currentPage = page
   document.querySelectorAll<HTMLElement>('.page').forEach((p) => {
     p.style.display = 'none'
   })
@@ -1514,7 +1514,6 @@ function App() {
         navigate(page, el)
       },
       loadMonth,
-      saveMonth,
       resetAllData,
       toggleSidebar,
       closeSidebar,

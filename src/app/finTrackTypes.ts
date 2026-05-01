@@ -2,7 +2,6 @@ export type FinTrackCtx = {
   navigate: (page: string, navEl?: Element | null) => void
   goToPage: (page: string) => void
   loadMonth: () => void
-  saveMonth: () => void
   resetAllData: () => void
   toggleSidebar: () => void
   closeSidebar: () => void

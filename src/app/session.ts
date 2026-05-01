@@ -12,4 +12,5 @@ export const session = {
   importAccountId: '' as string,
   importStep: 0 as number,
   importProjection: {} as Record<string, ExtractedItem[]>,
+  currentPage: 'dashboard' as string,
 }
