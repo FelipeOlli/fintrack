@@ -1051,7 +1051,16 @@ async function handlePdf(file: File | null | undefined) {
   status.textContent = `Lendo: ${file.name}`
   try {
     const ab = await file.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument({ data: ab }).promise
+    // Strip leading null bytes (Inter PDFs have ~435KB of zeros before %PDF header)
+    const view = new Uint8Array(ab)
+    let pdfData: ArrayBuffer = ab
+    for (let i = 0; i < Math.min(view.length - 4, 1_000_000); i++) {
+      if (view[i] === 0x25 && view[i + 1] === 0x50 && view[i + 2] === 0x44 && view[i + 3] === 0x46) {
+        if (i > 0) pdfData = ab.slice(i)
+        break
+      }
+    }
+    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
     let txt = ''
     for (let p = 1; p <= pdf.numPages; p++) {
       const pg = await pdf.getPage(p)

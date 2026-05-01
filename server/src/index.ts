@@ -391,8 +391,9 @@ Para cada transação retorne:
 
 Regras:
 - Ignore linhas de cabeçalho, saldos, totais, pagamentos da fatura e encargos/juros.
-- Valores devem ser positivos. Se aparecer negativo (crédito/estorno), ignore.
-- Detecte parcelas nos padrões: "PARC 3/12", "03/12" no final, "PARCELA 3 DE 12".
+- Valores devem ser positivos. Se aparecer negativo (crédito/estorno) ou com "+ R$", ignore.
+- Detecte parcelas nos padrões: "PARC 3/12", "03/12" no final, "PARCELA 3 DE 12", "(Parcela 02 de 02)".
+- Para faturas do Banco Inter: ignore "PAGAMENTO ON LINE", "IOF", "JUROS PGTO BOLETO", "Total CARTÃO", seção "Próxima fatura" e encargos financeiros. Datas podem estar no formato "14 de fev. 2026".
 - Retorne APENAS o JSON array, sem markdown, sem explicação.
 
 Texto da fatura:

@@ -15,6 +15,7 @@ export function detectInstallment(
 ): { current: number; total: number; cleanName: string } | null {
   const patterns: RegExp[] = [
     /PARC(?:ELA)?\s*(\d{1,2})\s*[/\\]\s*(\d{1,2})/i,
+    /\(Parcela\s+(\d{1,2})\s+de\s+(\d{1,2})\)/i,
     /(\d{1,2})\s*[/\\]\s*(\d{1,2})\s*$/,
   ]
   for (const re of patterns) {
@@ -41,7 +42,11 @@ export function parseTransactionsFromText(text: string): ExtractedItem[] {
   const results: ExtractedItem[] = []
   const seen = new Set<string>()
   const dateRe = /\b\d{2}[/-]\d{2}(?:[/-]\d{2,4})?\b/
+  const dateExtRe = /\d{1,2}\s+de\s+\w{3,4}\.?\s+\d{4}/g
+  let skipRest = false
   lines.forEach((line) => {
+    if (skipRest) return
+    if (/pr[oó]xima fatura/i.test(line)) { skipRest = true; return }
     const money = [...line.matchAll(/(?:R\$\s*)?(\d{1,3}(?:[.]\d{3})*,\d{2})(?!\d)/g)]
     if (money.length === 0) return
     const lower = line.toLowerCase()
@@ -52,15 +57,25 @@ export function parseTransactionsFromText(text: string): ExtractedItem[] {
       )
     )
       return
+    if (lower.includes('+ r$')) return
+    if (/\bpagamento on line\b|\biof\b|\bjuros pgto\b|total cart.o/i.test(lower)) return
+    if (/^(despesas da fatura|pr[oó]xima fatura|encargos financeiros|parcelamento|resumo da fatura)/i.test(lower)) return
+    if (/cart.o\s+\d{4}\*+/i.test(lower)) return
+    if (/\d{4}\*{4}\d+/.test(line)) return
+    if (/^\d\s*\+\s*\d+\s+de\s+r\$/i.test(lower)) return
+    if (/\b(pagamento m.nimo|limite de cr.dito|valor total financiado|valor total de juros|fatura atual|despesas do m.s|valor antecipado)\b/i.test(lower)) return
+    if (/\b(valor do documento|valor cobrado|encargos rotativos|encargos m.ximo)\b/i.test(lower)) return
     money.forEach((m) => {
       const val = parseFloat(m[1].replace(/\./g, '').replace(',', '.'))
       if (val < 1 || val > 99999) return
       let desc = line
         .replace(m[0], '')
         .replace(dateRe, '')
+        .replace(dateExtRe, '')
         .replace(/\d{5,}/g, '')
         .replace(/[*#|_-]{2,}/g, '')
         .trim()
+        .replace(/\s*-\s*$/, '')
         .replace(/\s{2,}/g, ' ')
         .slice(0, 60)
       if (desc.length < 3) desc = 'Lançamento'

@@ -51,6 +51,7 @@ export const CAT_KW: Record<string, string[]> = {
     'moto',
     'ônibus',
     'metrô',
+    'posto',
   ],
   Alimentação: [
     'supermercado',
@@ -66,6 +67,9 @@ export const CAT_KW: Record<string, string[]> = {
     'extra',
     'carrefour',
     'atacadão',
+    'atacadista',
+    'assai',
+    'markt',
   ],
   Saúde: [
     'farmácia',
@@ -77,6 +81,7 @@ export const CAT_KW: Record<string, string[]> = {
     'unimed',
     'amil',
     'hapvida',
+    'pacheco',
   ],
   Lazer: [
     'netflix',

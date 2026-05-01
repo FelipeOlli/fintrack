@@ -75,9 +75,28 @@ type CardType = 'nenhum' | 'credito' | 'debito'
 // → ver src/domain/types.ts
 ```
 
-### PDF Import
+### PDF Import com Claude AI
 
-`src/lib/pdfImportFromText.ts` extrai texto via PDF.js (carregado do CDN em `index.html`) e usa heurísticas com as keywords de `src/constants/categories.ts` para auto-categorizar transações brasileiras.
+Pipeline de importação de faturas (`src/app/` + `src/lib/`):
+1. **Wizard 3 passos** em `#page-importar`: upload → revisão → preview por mês
+2. **Parse**: `POST /api/parse-invoice` (Claude Haiku) → fallback para `parseTransactionsFromText` (regex local)
+3. **Detecção de parcelas**: `detectInstallment()` em `pdfImportFromText.ts` — padrões `PARC 3/12`, `03/12` no fim da linha
+4. **Projeção multi-mês**: `buildImportProjection()` em `src/lib/importProjection.ts` distribui itens parcelados para meses futuros
+5. **Deduplicação**: `deduplicateAcrossMonths()` em `src/lib/deduplication.ts` — normaliza nomes e compara contra bills existentes em todos os meses projetados
+
+Arquivos criados nessa feature:
+- `src/lib/monthKeyUtils.ts` — `advanceMonthKey()`, `computeInstallmentMonths()`
+- `src/lib/deduplication.ts` — `normalizeBillName()`, `matchAgainstExisting()`, `deduplicateAcrossMonths()`
+- `src/lib/importProjection.ts` — `buildImportProjection()`
+
+### Fontes de renda recorrentes
+
+`src/storage/persistence.ts` — funções de fallback:
+- `getValorFonteComFallback(monthKey, sourceId, recurring)` — retorna valor explícito do mês ou, se recorrente e sem valor, busca o último mês anterior com valor salvo
+- `getTotalMonthIncomeWithFallback(monthKey)` — total de renda considerando fallback de fontes recorrentes
+- `listPastMonthKeys(beforeMonthKey)` — lista meses anteriores com income salvo (localStorage ou apiCache)
+
+`App.tsx` usa `getTotalMonthIncomeWithFallback` em todos os cálculos de renda total. Modal de edição exibe "🔄 Valor herdado do mês anterior" quando o valor é fallback.
 
 ### Variáveis de ambiente
 
@@ -88,14 +107,17 @@ Frontend (`.env`):
 Backend (`server/.env`):
 - `DATABASE_URL` — Connection string PostgreSQL
 - `PORT` — Padrão 3000
-- `CORS_ORIGIN` — Padrão `*`
+- `ANTHROPIC_API_KEY` — Necessário para `POST /api/parse-invoice` (Claude Haiku)
 
-### Deploy
+### Deploy (Easypanel — Hetzner)
 
-- **Frontend**: `docker build` na raiz → Nginx serve `dist/`
-- **Backend**: `docker build` em `server/` → Node Alpine
-- Plataforma alvo: Easypanel na Hetzner
+- **Frontend** (`sintel-fintrack.bhtdat.easypanel.host`): Build Path `/`, Dockerfile `Dockerfile`, Build Arg `VITE_API_URL`
+- **Backend** (`sintel-fintrack-api.bhtdat.easypanel.host`): Build Path `server`, Dockerfile `Dockerfile`, porta 3000
+- **DB**: PostgreSQL interno no Easypanel — connection string via `DATABASE_URL` no serviço da API
+- `VITE_*` são embedded no build → devem ser passados como Build Args no Easypanel (aba Environment passa como `--build-arg` automaticamente)
 
 ---
 
 ## Sessões recentes
+
+- **2026-04-28**: Import de faturas PDF com Claude AI (wizard 3 passos, detecção de parcelas, projeção multi-mês, deduplicação). Deploy Easypanel frontend + API. Correção de bugs: botão excluir bills, CORS, inicialização apiCache. Fontes de renda recorrentes com fallback de valor entre meses.
