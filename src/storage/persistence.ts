@@ -277,6 +277,25 @@ export function appendBillsToMonth(monthKey: string, newBills: Bill[]): void {
   writeBillsMonth(monthKey, [...existing, ...newBills])
 }
 
+/** Propaga mudança de categoria para todos os meses onde o lançamento (por nome) existe. */
+export function propagateCategoryChange(billName: string, oldCategory: string, newCategory: string, skipMonthKey?: string): void {
+  const keys = listBillsStorageKeysSorted()
+  for (const storageKey of keys) {
+    const monthKey = storageKey.replace(/^bills_/, '')
+    if (monthKey === skipMonthKey) continue
+    const bills = readBillsMonth(monthKey)
+    if (!bills) continue
+    let changed = false
+    for (const b of bills) {
+      if (b.name === billName && b.category === oldCategory) {
+        b.category = newCategory
+        changed = true
+      }
+    }
+    if (changed) writeBillsMonth(monthKey, bills)
+  }
+}
+
 /** Chaves `bills_*` ordenadas (lexicográfico = ordem cronológica com YYYY_MM). */
 export function listBillsStorageKeysSorted(): string[] {
   if (!persistenceUsesApi()) {

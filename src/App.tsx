@@ -28,6 +28,7 @@ import {
   initPersistence,
   listBillsStorageKeysSorted,
   persistenceUsesApi,
+  propagateCategoryChange,
   readBillsMonth,
   saveAccounts,
   saveCategories,
@@ -182,7 +183,8 @@ function saveEditAccount() {
 function renderCategoriasPage() {
   const wrap = document.getElementById('categoriasList')
   if (!wrap) return
-  const cats = getCategories()
+  const filter = session.billsFilter.toLowerCase()
+  const cats = getCategories().filter((c) => !filter || c.name.toLowerCase().includes(filter))
   wrap.innerHTML = `
     <div class="contas-cadastradas-table-wrap">
       <table>
@@ -284,7 +286,8 @@ function deleteCategory(id: string) {
 function renderFontesRendaPage() {
   const wrap = document.getElementById('fontesRendaList')
   if (!wrap) return
-  const sources = getIncomeSources()
+  const filter = session.billsFilter.toLowerCase()
+  const sources = getIncomeSources().filter((s) => !filter || s.name.toLowerCase().includes(filter))
   if (sources.length === 0) {
     wrap.innerHTML = '<div class="empty"><p>Nenhuma fonte de renda. Use "Nova fonte" para adicionar.</p></div>'
     return
@@ -436,7 +439,8 @@ function deleteFonte(id: string) {
 function renderContasCadastradas() {
   const wrap = document.getElementById('contasCadastradasList')
   if (!wrap) return
-  const accounts = getAccounts()
+  const filter = session.billsFilter.toLowerCase()
+  const accounts = getAccounts().filter((a) => !filter || a.name.toLowerCase().includes(filter))
   if (accounts.length === 0) {
     wrap.innerHTML = '<div class="empty"><p>Nenhuma conta cadastrada. Use "Nova conta" para adicionar.</p></div>'
     return
@@ -540,21 +544,27 @@ function initMonthSel() {
   if (!sel) return
   sel.innerHTML = ''
   const now = new Date()
+  const keysSet = new Set<string>()
   const opts: { key: string; label: string }[] = []
-  for (let i = 3; i >= 1; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
-    opts.push({
-      key: mkKey(d.getFullYear(), d.getMonth()),
-      label: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
-    })
+  const addMonth = (d: Date) => {
+    const key = mkKey(d.getFullYear(), d.getMonth())
+    if (keysSet.has(key)) return
+    keysSet.add(key)
+    opts.push({ key, label: `${MONTHS[d.getMonth()]} ${d.getFullYear()}` })
   }
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    opts.push({
-      key: mkKey(d.getFullYear(), d.getMonth()),
-      label: `${MONTHS[d.getMonth()]} ${d.getFullYear()}`,
-    })
+  // Default range: 3 future + 14 past
+  for (let i = 3; i >= 1; i--) addMonth(new Date(now.getFullYear(), now.getMonth() + i, 1))
+  for (let i = 0; i < 14; i++) addMonth(new Date(now.getFullYear(), now.getMonth() - i, 1))
+  // Extend with months that have saved data (installment projections, etc.)
+  for (const raw of listBillsStorageKeysSorted()) {
+    const mk = raw.replace('bills_', '')
+    if (keysSet.has(mk)) continue
+    const [y, m] = mk.split('_').map(Number)
+    if (!y || !m) continue
+    keysSet.add(mk)
+    opts.push({ key: mk, label: `${MONTHS[m - 1]} ${y}` })
   }
+  opts.sort((a, b) => (a.key > b.key ? -1 : a.key < b.key ? 1 : 0))
   opts.forEach((o) => {
     const e = document.createElement('option')
     e.value = o.key
@@ -570,7 +580,7 @@ function loadMonth() {
   if (!sel) return
   session.currentMonth = sel.value
   session.billsFilter = ''
-  const searchInput = document.getElementById('billsSearch') as HTMLInputElement | null
+  const searchInput = document.getElementById('globalSearch') as HTMLInputElement | null
   if (searchInput) searchInput.value = ''
   const saved = readBillsMonth(session.currentMonth)
   if (saved !== null) {
@@ -963,6 +973,7 @@ function saveEditBill() {
   const status = statusSelect.value as BillStatus
   const obs = obsInput?.value?.trim() || ''
   const accountId = accountSelect?.value || undefined
+  const oldCategory = bill.category
   const wasRec = isRecurring(bill)
   const nowRec = recurringCheck?.checked ?? false
   if (nowRec && !wasRec) {
@@ -980,6 +991,15 @@ function saveEditBill() {
     status,
     obs,
     accountId: accountId || undefined,
+  }
+  if (category !== oldCategory) {
+    propagateCategoryChange(bill.name, oldCategory, category, session.currentMonth)
+    const recTemplates = getRecurringTemplates()
+    const recIdx = recTemplates.findIndex((r) => r.name === bill.name && r.category === oldCategory)
+    if (recIdx >= 0) {
+      recTemplates[recIdx].category = category
+      saveRecurringTemplates(recTemplates)
+    }
   }
   session.editingBillIndex = null
   closeLancamentoModal()
@@ -1380,6 +1400,9 @@ function importConfirmed() {
 
 function navigate(page: string, navEl?: Element | null) {
   session.currentPage = page
+  session.billsFilter = ''
+  const searchInput = document.getElementById('globalSearch') as HTMLInputElement | null
+  if (searchInput) searchInput.value = ''
   document.querySelectorAll<HTMLElement>('.page').forEach((p) => {
     p.style.display = 'none'
   })
@@ -1475,11 +1498,14 @@ function App() {
         initMonthSel()
         loadMonth()
 
-        const billsSearchInput = document.getElementById('billsSearch') as HTMLInputElement | null
-        if (billsSearchInput) {
-          billsSearchInput.addEventListener('input', () => {
-            session.billsFilter = billsSearchInput.value
-            renderBills()
+        const globalSearchInput = document.getElementById('globalSearch') as HTMLInputElement | null
+        if (globalSearchInput) {
+          globalSearchInput.addEventListener('input', () => {
+            session.billsFilter = globalSearchInput.value
+            if (session.currentPage === 'contas') renderBills()
+            else if (session.currentPage === 'categorias') renderCategoriasPage()
+            else if (session.currentPage === 'contas-cadastradas') renderContasCadastradas()
+            else if (session.currentPage === 'fontes-renda') renderFontesRendaPage()
           })
         }
       } catch (err) {

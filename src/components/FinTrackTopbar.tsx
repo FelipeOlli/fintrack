@@ -17,6 +17,7 @@ export function FinTrackTopbar() {
         </span>
         <input
           type="search"
+          id="globalSearch"
           className="topbar-search"
           placeholder="Buscar lançamentos, categorias..."
           aria-label="Buscar"
