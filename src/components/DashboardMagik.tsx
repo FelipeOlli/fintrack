@@ -324,7 +324,7 @@ export function DashboardMagik() {
                         borderRadius: 12,
                         color: '#f4f4f5',
                       }}
-                      formatter={(v) => [fmt(Number(v ?? 0)), '']}
+                      formatter={(v, name) => [fmt(Number(v ?? 0)), String(name)]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
