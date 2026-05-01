@@ -2,7 +2,13 @@ import { useMemo, useState, useSyncExternalStore } from 'react'
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -12,7 +18,7 @@ import { session } from '../app/session'
 import { useFinTrack } from '../app/useFinTrack'
 import { getDashRevision, subscribeDash } from '../lib/dashboardSync'
 import { fmt } from '../lib/format'
-import { currentMonthTotals, getMonthlyPointsLast } from '../lib/monthSeries'
+import { currentMonthTotals, getCategoryBreakdown, getMonthlyPointsLast, getYearCategoryData } from '../lib/monthSeries'
 import { getAccounts } from '../storage/persistence'
 import type { BillStatus } from '../domain/types'
 
@@ -101,6 +107,16 @@ export function DashboardMagik() {
   const pPago = total > 0 ? (pago / total) * 100 : 0
   const pPend = total > 0 ? (pend / total) * 100 : 0
   const pDiv = total > 0 ? (div / total) * 100 : 0
+
+  const catBreakdown = useMemo(() => {
+    void rev
+    return getCategoryBreakdown()
+  }, [rev])
+
+  const yearCatData = useMemo(() => {
+    void rev
+    return getYearCategoryData()
+  }, [rev])
 
   const billsPreview = useMemo(() => {
     void rev
@@ -269,6 +285,118 @@ export function DashboardMagik() {
                   </span>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="dash-magik-charts">
+        <div className="card dash-area-card">
+          <div className="dash-area-head">
+            <span className="card-title">Gastos por categoria — {periodLabel}</span>
+          </div>
+          <div className="dash-cat-chart-wrap">
+            {catBreakdown.length === 0 ? (
+              <div className="dash-empty">Sem lançamentos neste mês.</div>
+            ) : (
+              <div className="dash-cat-pie-row">
+                <ResponsiveContainer width="100%" height={260}>
+                  <PieChart>
+                    <Pie
+                      data={catBreakdown}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={100}
+                      paddingAngle={2}
+                      strokeWidth={0}
+                    >
+                      {catBreakdown.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        background: '#1f1f24',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: 12,
+                        color: '#f4f4f5',
+                      }}
+                      formatter={(v) => [fmt(Number(v ?? 0)), '']}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="dash-cat-legend">
+                  {catBreakdown.map((c) => (
+                    <div key={c.name} className="dash-cat-legend-item">
+                      <i className="dot" style={{ background: c.color }} />
+                      <span className="dash-cat-legend-name">{c.name}</span>
+                      <span className="dash-cat-legend-val">{fmt(c.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card dash-area-card">
+          <div className="dash-area-head">
+            <span className="card-title">Gastos por categoria — Ano {parts[0]}</span>
+          </div>
+          <div className="dash-area-chart-wrap">
+            {yearCatData.categories.length === 0 ? (
+              <div className="dash-empty">Sem dados para o ano.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={yearCatData.data} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 6" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: '#71717a', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fill: '#71717a', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) =>
+                      typeof v === 'number' && v >= 1000
+                        ? `R$ ${(v / 1000).toFixed(0)}k`
+                        : `R$ ${v}`
+                    }
+                    width={56}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#1f1f24',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 12,
+                      color: '#f4f4f5',
+                    }}
+                    formatter={(v, name) => [fmt(Number(v ?? 0)), String(name)]}
+                    labelFormatter={(l) => String(l)}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: 11, color: '#a1a1aa', paddingTop: 8 }}
+                  />
+                  {yearCatData.categories.map((cat) => (
+                    <Bar
+                      key={cat.name}
+                      dataKey={cat.name}
+                      stackId="cats"
+                      fill={cat.color}
+                      radius={[0, 0, 0, 0]}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
             )}
           </div>
         </div>
