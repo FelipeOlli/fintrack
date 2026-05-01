@@ -475,7 +475,13 @@ function renderBills() {
   const tb = document.getElementById('billsBody')
   if (!tb) return
   tb.innerHTML = ''
+  const filter = session.billsFilter.toLowerCase()
   session.currentBills.forEach((bill, i) => {
+    if (filter) {
+      const accountLabel = bill.accountId ? getAccountName(bill.accountId) : ''
+      const haystack = `${bill.name} ${bill.category} ${bill.obs || ''} ${accountLabel}`.toLowerCase()
+      if (!haystack.includes(filter)) return
+    }
     const rec = isRecurring(bill)
     const recorrenteCell = `<button type="button" class="btn-recorrente-toggle${rec ? ' is-active' : ''}">${
       rec ? '🔂' : '❌'
@@ -563,13 +569,35 @@ function loadMonth() {
   const sel = document.getElementById('monthSelect') as HTMLSelectElement | null
   if (!sel) return
   session.currentMonth = sel.value
+  session.billsFilter = ''
+  const searchInput = document.getElementById('billsSearch') as HTMLInputElement | null
+  if (searchInput) searchInput.value = ''
   const saved = readBillsMonth(session.currentMonth)
-  session.currentBills =
-    saved !== null
-      ? saved
-      : getRecurringBillsAsBills().length > 0
-        ? getRecurringBillsAsBills()
-        : []
+  if (saved !== null) {
+    session.currentBills = saved
+    // Inject missing recurring templates into existing month
+    const templates = getRecurringTemplates()
+    let added = false
+    for (const tpl of templates) {
+      const exists = session.currentBills.some(
+        (b) => b.name === tpl.name && b.category === tpl.category,
+      )
+      if (!exists) {
+        session.currentBills.push({
+          name: tpl.name,
+          category: tpl.category,
+          value: tpl.value,
+          status: tpl.status as Bill['status'],
+          obs: '',
+          accountId: tpl.accountId,
+        })
+        added = true
+      }
+    }
+    if (added) autoSave()
+  } else {
+    session.currentBills = getRecurringBillsAsBills()
+  }
   const parts = session.currentMonth.split('_')
   const monthNum = parseInt(parts[1], 10)
   const monthName = monthNum >= 1 && monthNum <= 12 ? MONTHS[monthNum - 1] : parts[1] || 'Mês'
@@ -580,7 +608,7 @@ function loadMonth() {
   updateKPIs()
   renderDashCharts()
   renderHistory()
-  updatePendBadge()
+
   if (session.currentPage === 'fontes-renda') renderFontesRendaPage()
   if (session.currentPage === 'contas-cadastradas') renderContasCadastradas()
   if (session.currentPage === 'categorias') renderCategoriasPage()
@@ -603,7 +631,7 @@ function resetAllData() {
   updateKPIs()
   renderDashCharts()
   renderHistory()
-  updatePendBadge()
+
   showToast('🧹 Todos os dados foram limpos.')
 }
 
@@ -716,19 +744,11 @@ function updateKPIs() {
   setText('c_kpiPago', fmt(t.pago))
   setText('c_kpiPend', fmt(t.pend))
   setText('c_kpiDiv', fmt(t.divRenda))
-  updatePendBadge()
+
   bumpDash()
 }
 
-function updatePendBadge() {
-  const n = session.currentBills.filter(
-    (b) => b.status === 'pendente' || b.status === 'divida',
-  ).length
-  const b = document.getElementById('pendBadge')
-  if (!b) return
-  b.style.display = n > 0 ? 'inline' : 'none'
-  b.textContent = String(n)
-}
+
 
 function ubill(i: number, f: keyof Bill, v: string) {
   if (!session.currentBills[i]) return
@@ -1454,6 +1474,14 @@ function App() {
         await initPersistence()
         initMonthSel()
         loadMonth()
+
+        const billsSearchInput = document.getElementById('billsSearch') as HTMLInputElement | null
+        if (billsSearchInput) {
+          billsSearchInput.addEventListener('input', () => {
+            session.billsFilter = billsSearchInput.value
+            renderBills()
+          })
+        }
       } catch (err) {
         console.error('Erro ao inicializar app:', err)
         showToast(

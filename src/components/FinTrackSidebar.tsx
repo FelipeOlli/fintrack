@@ -35,10 +35,7 @@ export function FinTrackSidebar() {
           data-nav-page="contas"
           onClick={(e) => ft.navigate('contas', e.currentTarget)}
         >
-          <span className="nav-icon">📋</span> Lançamentos{' '}
-          <span className="nav-badge" id="pendBadge" style={{ display: 'none' }}>
-            !
-          </span>
+          <span className="nav-icon">📋</span> Lançamentos
         </div>
 
         <div className="nav-group-label">Cadastros</div>
@@ -80,6 +77,12 @@ export function FinTrackSidebar() {
         >
           <span className="nav-icon">📄</span> Importar extrato
         </div>
+        <div
+          className="nav-item"
+          onClick={ft.resetAllData}
+        >
+          <span className="nav-icon">🗑</span> Limpar dados do período
+        </div>
       </nav>
 
       <button
@@ -95,15 +98,7 @@ export function FinTrackSidebar() {
         <span className="sidebar-quick-add-text">Novo lançamento</span>
       </button>
 
-      <div className="sidebar-footer">
-        <button
-          className="btn-ghost-sm btn-ghost-sidebar"
-          type="button"
-          onClick={ft.resetAllData}
-        >
-          Limpar dados do período
-        </button>
-      </div>
+      <div className="sidebar-footer" />
     </aside>
   )
 }

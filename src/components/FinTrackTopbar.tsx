@@ -38,13 +38,6 @@ export function FinTrackTopbar() {
           <span className="topbar-icon-dot" aria-hidden />
           🔔
         </button>
-        <button type="button" className="topbar-icon-btn" aria-label="Mensagens">
-          <span className="topbar-icon-dot" aria-hidden />
-          💬
-        </button>
-        <div className="topbar-avatar" title="Conta local">
-          FT
-        </div>
         <button
           className="btn btn-magik-import"
           type="button"
@@ -52,6 +45,9 @@ export function FinTrackTopbar() {
         >
           Importar
         </button>
+        <div className="topbar-avatar" title="Conta local">
+          FT
+        </div>
       </div>
     </header>
   )

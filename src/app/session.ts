@@ -13,4 +13,5 @@ export const session = {
   importStep: 0 as number,
   importProjection: {} as Record<string, ExtractedItem[]>,
   currentPage: 'dashboard' as string,
+  billsFilter: '' as string,
 }

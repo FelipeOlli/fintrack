@@ -196,6 +196,14 @@ export function FinTrackContent() {
         </div>
 
         <div className="card">
+          <div className="bills-search-wrap">
+            <input
+              type="text"
+              id="billsSearch"
+              className="bills-search"
+              placeholder="Buscar por nome, categoria ou obs..."
+            />
+          </div>
           <div className="bills-wrap">
             <table>
               <thead>

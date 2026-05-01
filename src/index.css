@@ -791,6 +791,28 @@ body {
   font-weight: 700;
 }
 
+.bills-search-wrap {
+  padding: 0 0 12px;
+}
+.bills-search {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.bills-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.bills-search::placeholder {
+  color: var(--text2);
+}
+
 /* ── TABLES ── */
 .bills-wrap {
   overflow-x: auto;
