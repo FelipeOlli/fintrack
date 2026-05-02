@@ -379,6 +379,8 @@ export function DashboardMagik() {
                       borderRadius: 12,
                       color: '#f4f4f5',
                     }}
+                    itemStyle={{ color: '#f4f4f5' }}
+                    labelStyle={{ color: '#f4f4f5' }}
                     formatter={(v) => [fmt(Number(v ?? 0)), 'Gasto']}
                     labelFormatter={(l) => String(l)}
                   />
