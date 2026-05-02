@@ -2,7 +2,7 @@ import { CAT_COLORS, MONTHS } from '../constants/categories'
 import type { Bill } from '../domain/types'
 import { session } from '../app/session'
 import { billsStorageKey } from '../storage/keys'
-import { listBillsStorageKeysSorted, readBillsMonth } from '../storage/persistence'
+import { getTotalMonthIncomeWithFallback, listBillsStorageKeysSorted, readBillsMonth } from '../storage/persistence'
 
 export type MonthPoint = {
   monthKey: string
@@ -11,6 +11,8 @@ export type MonthPoint = {
   pago: number
   pend: number
   div: number
+  income: number
+  lucro: number
 }
 
 function billsForMonth(monthKey: string): Bill[] {
@@ -56,10 +58,13 @@ export function getMonthlyPointsLast(maxMonths: number): MonthPoint[] {
   return slice.map((k) => {
     const monthKey = k.replace('bills_', '')
     const sums = summarizeBills(billsForMonth(monthKey))
+    const income = getTotalMonthIncomeWithFallback(monthKey)
     return {
       monthKey,
       label: labelFromKey(monthKey),
       ...sums,
+      income,
+      lucro: income - sums.total,
     }
   })
 }
