@@ -42,9 +42,9 @@ export function FinTrackTopbar() {
         <button
           className="btn btn-magik-import"
           type="button"
-          onClick={() => ft.goToPage('importar')}
+          onClick={ft.openLancamentoModal}
         >
-          Importar
+          + Lançamento
         </button>
         <div className="topbar-avatar" title="Conta local">
           FT
