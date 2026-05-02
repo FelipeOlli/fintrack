@@ -377,7 +377,12 @@ export function DashboardMagik() {
                       borderRadius: 12,
                       color: '#f4f4f5',
                     }}
-                    formatter={(v, name) => [fmt(Number(v ?? 0)), String(name)]}
+                    formatter={(v, name) => {
+                      const label = String(name).startsWith('renda:')
+                        ? `↑ ${String(name).slice(6)}`
+                        : String(name)
+                      return [fmt(Number(v ?? 0)), label]
+                    }}
                     labelFormatter={(l) => String(l)}
                   />
                   <Legend
@@ -385,6 +390,11 @@ export function DashboardMagik() {
                     iconType="circle"
                     iconSize={8}
                     wrapperStyle={{ fontSize: 11, color: '#a1a1aa', paddingTop: 8 }}
+                    formatter={(value) =>
+                      String(value).startsWith('renda:')
+                        ? `↑ ${String(value).slice(6)}`
+                        : String(value)
+                    }
                   />
                   {yearCatData.categories.map((cat) => (
                     <Bar
@@ -392,6 +402,15 @@ export function DashboardMagik() {
                       dataKey={cat.name}
                       stackId="cats"
                       fill={cat.color}
+                      radius={[0, 0, 0, 0]}
+                    />
+                  ))}
+                  {yearCatData.incomeCategories.map((src) => (
+                    <Bar
+                      key={src.name}
+                      dataKey={src.name}
+                      stackId="income"
+                      fill={src.color}
                       radius={[0, 0, 0, 0]}
                     />
                   ))}

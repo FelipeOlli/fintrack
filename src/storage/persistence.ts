@@ -279,6 +279,11 @@ export function appendBillsToMonth(monthKey: string, newBills: Bill[]): void {
 
 /** Propaga mudança de categoria para todos os meses onde o lançamento (por nome) existe. */
 export function propagateCategoryChange(billName: string, oldCategory: string, newCategory: string, skipMonthKey?: string): void {
+  const INSTALLMENT_RE = /^(.+) · Parc \d+\/(\d+)$/
+  const instMatch = INSTALLMENT_RE.exec(billName)
+  const nameTest: (n: string) => boolean = instMatch
+    ? (n) => { const m = INSTALLMENT_RE.exec(n); return !!m && m[1] === instMatch[1] && m[2] === instMatch[2] }
+    : (n) => n === billName
   const keys = listBillsStorageKeysSorted()
   for (const storageKey of keys) {
     const monthKey = storageKey.replace(/^bills_/, '')
@@ -287,7 +292,7 @@ export function propagateCategoryChange(billName: string, oldCategory: string, n
     if (!bills) continue
     let changed = false
     for (const b of bills) {
-      if (b.name === billName && b.category === oldCategory) {
+      if (nameTest(b.name) && b.category === oldCategory) {
         b.category = newCategory
         changed = true
       }

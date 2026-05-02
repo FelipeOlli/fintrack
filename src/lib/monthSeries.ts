@@ -2,7 +2,7 @@ import { CAT_COLORS, MONTHS } from '../constants/categories'
 import type { Bill } from '../domain/types'
 import { session } from '../app/session'
 import { billsStorageKey } from '../storage/keys'
-import { listBillsStorageKeysSorted, readBillsMonth } from '../storage/persistence'
+import { getIncomeSources, getValorFonteComFallback, listBillsStorageKeysSorted, readBillsMonth } from '../storage/persistence'
 
 export type MonthPoint = {
   monthKey: string
@@ -99,12 +99,19 @@ export type YearCategoryPoint = {
   [category: string]: string | number
 }
 
-/** Gastos por categoria ao longo dos meses do ano do mês selecionado. */
-export function getYearCategoryData(): { data: YearCategoryPoint[]; categories: CategorySlice[] } {
+const INCOME_PALETTE = [
+  '#4ade80', '#34d399', '#2dd4bf', '#38bdf8', '#a3e635',
+  '#facc15', '#fb923c', '#f472b6', '#c084fc', '#60a5fa',
+]
+
+/** Gastos por categoria + fontes de renda ao longo dos meses do ano do mês selecionado. */
+export function getYearCategoryData(): { data: YearCategoryPoint[]; categories: CategorySlice[]; incomeCategories: CategorySlice[] } {
   const [yearStr] = session.currentMonth.split('_')
   const year = parseInt(yearStr, 10)
   const allCats = new Map<string, number>()
+  const allIncome = new Map<string, number>()
   const points: YearCategoryPoint[] = []
+  const sources = getIncomeSources()
 
   for (let m = 1; m <= 12; m++) {
     const mk = `${year}_${String(m).padStart(2, '0')}`
@@ -116,6 +123,14 @@ export function getYearCategoryData(): { data: YearCategoryPoint[]; categories: 
       point[cat] = ((point[cat] as number) || 0) + v
       allCats.set(cat, (allCats.get(cat) || 0) + v)
     }
+    for (const s of sources) {
+      const v = getValorFonteComFallback(mk, s.id, s.recurring)
+      if (v > 0) {
+        const key = `renda:${s.name}`
+        point[key] = v
+        allIncome.set(key, (allIncome.get(key) || 0) + v)
+      }
+    }
     points.push(point)
   }
 
@@ -124,5 +139,10 @@ export function getYearCategoryData(): { data: YearCategoryPoint[]; categories: 
     .sort((a, b) => b[1] - a[1])
     .map(([name, value], i) => ({ name, value, color: categoryColor(name, i) }))
 
-  return { data: points, categories }
+  const incomeCategories = Array.from(allIncome.entries())
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, value], i) => ({ name, value, color: INCOME_PALETTE[i % INCOME_PALETTE.length] }))
+
+  return { data: points, categories, incomeCategories }
 }
