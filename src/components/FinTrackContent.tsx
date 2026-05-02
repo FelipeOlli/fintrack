@@ -54,9 +54,9 @@ export function FinTrackContent() {
               0% quitado
             </div>
           </div>
-          <div className="kpi-card kpi-card--magik kpi-accent--amber">
+          <div className="kpi-card kpi-card--magik kpi-accent--red">
             <div className="kpi-card-head">
-              <div className="kpi-icon-wrap kpi-icon-wrap--amber" aria-hidden>
+              <div className="kpi-icon-wrap kpi-icon-wrap--red" aria-hidden>
                 ⏳
               </div>
               <span className="kpi-trend-badge kpi-trend--neutral" id="kpiPendTrend">
@@ -64,7 +64,7 @@ export function FinTrackContent() {
               </span>
             </div>
             <div className="kpi-label">Pendente</div>
-            <div className="kpi-value kpi-value--magik amber" id="kpiPend">
+            <div className="kpi-value kpi-value--magik tone-red" id="kpiPend">
               R$ 0
             </div>
             <div className="kpi-sub" id="kpiPendSub">
