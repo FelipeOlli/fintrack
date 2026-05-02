@@ -21,7 +21,7 @@ import { currentMonthTotals, getCategoryBreakdown, getMonthlyPointsLast, getYear
 import { getAccounts } from '../storage/persistence'
 import type { BillStatus } from '../domain/types'
 
-type ChartTab = 'total' | 'pago' | 'lucro'
+type ChartTab = 'total' | 'pago'
 
 function accountName(id?: string) {
   if (!id) return '—'
@@ -92,7 +92,7 @@ export function DashboardMagik() {
     void rev
     return getMonthlyPointsLast(range).map((p) => ({
       ...p,
-      chartVal: tab === 'total' ? p.total : tab === 'pago' ? p.pago : p.lucro,
+      chartVal: tab === 'total' ? p.total : p.pago,
     }))
   }, [rev, range, tab])
 
@@ -166,15 +166,6 @@ export function DashboardMagik() {
               >
                 Valor quitado
               </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'lucro'}
-                className={`dash-chart-tab${tab === 'lucro' ? ' active' : ''}`}
-                onClick={() => setTab('lucro')}
-              >
-                Lucro
-              </button>
             </div>
             <select
               className="dash-period-select"
@@ -194,8 +185,8 @@ export function DashboardMagik() {
                 <AreaChart data={chartData} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="magikArea" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={tab === 'lucro' ? '#38bdf8' : '#bef264'} stopOpacity={0.45} />
-                      <stop offset="100%" stopColor={tab === 'lucro' ? '#38bdf8' : '#bef264'} stopOpacity={0} />
+                      <stop offset="0%" stopColor="#bef264" stopOpacity={0.45} />
+                      <stop offset="100%" stopColor="#bef264" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 6" stroke="rgba(255,255,255,0.06)" vertical={false} />
@@ -223,20 +214,30 @@ export function DashboardMagik() {
                       borderRadius: 12,
                       color: '#f4f4f5',
                     }}
-                    formatter={(v) => [
-                      fmt(Number(v ?? 0)),
-                      tab === 'total' ? 'Total' : tab === 'pago' ? 'Quitado' : 'Lucro',
-                    ]}
-                    labelFormatter={(l) => String(l)}
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null
+                      const p = payload[0].payload as { lucro: number; chartVal: number }
+                      return (
+                        <div style={{ background: '#1f1f24', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '10px 14px', color: '#f4f4f5', fontSize: 13 }}>
+                          <div style={{ marginBottom: 6, fontWeight: 600 }}>{String(label)}</div>
+                          <div>{tab === 'total' ? 'Total' : 'Quitado'}: {fmt(p.chartVal)}</div>
+                          {tab === 'total' && (
+                            <div style={{ marginTop: 4, color: p.lucro >= 0 ? '#4ade80' : '#f87171' }}>
+                              Lucro: {fmt(p.lucro)}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }}
                   />
                   <Area
                     type="monotone"
                     dataKey="chartVal"
-                    stroke={tab === 'lucro' ? '#38bdf8' : '#bef264'}
+                    stroke="#bef264"
                     strokeWidth={2.5}
                     fill="url(#magikArea)"
                     dot={{ r: 0, strokeWidth: 0 }}
-                    activeDot={{ r: 5, fill: tab === 'lucro' ? '#38bdf8' : '#bef264', stroke: '#0f0f12', strokeWidth: 2 }}
+                    activeDot={{ r: 5, fill: '#bef264', stroke: '#0f0f12', strokeWidth: 2 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
