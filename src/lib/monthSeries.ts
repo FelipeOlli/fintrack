@@ -2,7 +2,7 @@ import { CAT_COLORS, MONTHS } from '../constants/categories'
 import type { Bill } from '../domain/types'
 import { session } from '../app/session'
 import { billsStorageKey } from '../storage/keys'
-import { getIncomeSources, getValorFonteComFallback, listBillsStorageKeysSorted, readBillsMonth } from '../storage/persistence'
+import { listBillsStorageKeysSorted, readBillsMonth } from '../storage/persistence'
 
 export type MonthPoint = {
   monthKey: string
@@ -76,11 +76,6 @@ const PALETTE = [
   '#84cc16', '#a855f7', '#22d3ee', '#fb923c', '#64748b',
 ]
 
-const INCOME_PALETTE = [
-  '#4ade80', '#34d399', '#2dd4bf', '#38bdf8', '#a3e635',
-  '#facc15', '#fb923c', '#f472b6', '#c084fc', '#60a5fa',
-]
-
 function categoryColor(name: string, idx: number): string {
   return CAT_COLORS[name] || PALETTE[idx % PALETTE.length]
 }
@@ -98,15 +93,13 @@ export function getCategoryBreakdown(): CategorySlice[] {
     .map(([name, value], i) => ({ name, value, color: categoryColor(name, i) }))
 }
 
-export type YearCategoryBar = { name: string; value: number; color: string; type: 'expense' | 'income' }
+export type YearCategoryBar = { name: string; value: number; color: string }
 
-/** Totais anuais por categoria de gasto + por fonte de renda, para o ano do mês selecionado. */
+/** Totais anuais por categoria de gasto para o ano do mês selecionado. */
 export function getYearCategoryData(): { bars: YearCategoryBar[] } {
   const [yearStr] = session.currentMonth.split('_')
   const year = parseInt(yearStr, 10)
   const allCats = new Map<string, number>()
-  const allIncome = new Map<string, number>()
-  const sources = getIncomeSources()
 
   for (let m = 1; m <= 12; m++) {
     const mk = `${year}_${String(m).padStart(2, '0')}`
@@ -115,21 +108,12 @@ export function getYearCategoryData(): { bars: YearCategoryBar[] } {
       const cat = b.category || 'Outros'
       allCats.set(cat, (allCats.get(cat) || 0) + (b.value || 0))
     }
-    for (const s of sources) {
-      const v = getValorFonteComFallback(mk, s.id, s.recurring)
-      if (v > 0) allIncome.set(s.name, (allIncome.get(s.name) || 0) + v)
-    }
   }
 
-  const expenseBars: YearCategoryBar[] = Array.from(allCats.entries())
+  const bars: YearCategoryBar[] = Array.from(allCats.entries())
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
-    .map(([name, value], i) => ({ name, value, color: categoryColor(name, i), type: 'expense' }))
+    .map(([name, value], i) => ({ name, value, color: categoryColor(name, i) }))
 
-  const incomeBars: YearCategoryBar[] = Array.from(allIncome.entries())
-    .filter(([, v]) => v > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, value], i) => ({ name, value, color: INCOME_PALETTE[i % INCOME_PALETTE.length], type: 'income' }))
-
-  return { bars: [...expenseBars, ...incomeBars] }
+  return { bars }
 }

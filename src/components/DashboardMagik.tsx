@@ -379,11 +379,7 @@ export function DashboardMagik() {
                       borderRadius: 12,
                       color: '#f4f4f5',
                     }}
-                    formatter={(v, _name, props) => {
-                      const bar = props.payload as { type: string; name: string }
-                      const label = bar.type === 'income' ? `↑ Renda` : 'Gasto'
-                      return [fmt(Number(v ?? 0)), label]
-                    }}
+                    formatter={(v) => [fmt(Number(v ?? 0)), 'Gasto']}
                     labelFormatter={(l) => String(l)}
                   />
                   <Bar dataKey="value" radius={[4, 4, 0, 0]}>
