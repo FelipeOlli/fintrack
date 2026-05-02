@@ -347,17 +347,20 @@ export function DashboardMagik() {
             <span className="card-title">Gastos por categoria — Ano {parts[0]}</span>
           </div>
           <div className="dash-area-chart-wrap">
-            {yearCatData.categories.length === 0 ? (
+            {yearCatData.bars.length === 0 ? (
               <div className="dash-empty">Sem dados para o ano.</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={yearCatData.data} margin={{ top: 12, right: 12, left: 0, bottom: 0 }}>
+                <BarChart data={yearCatData.bars} margin={{ top: 12, right: 12, left: 0, bottom: 40 }}>
                   <CartesianGrid strokeDasharray="3 6" stroke="rgba(255,255,255,0.06)" vertical={false} />
                   <XAxis
-                    dataKey="label"
-                    tick={{ fill: '#71717a', fontSize: 11 }}
+                    dataKey="name"
+                    tick={{ fill: '#71717a', fontSize: 10 }}
                     axisLine={false}
                     tickLine={false}
+                    interval={0}
+                    angle={-35}
+                    textAnchor="end"
                   />
                   <YAxis
                     tick={{ fill: '#71717a', fontSize: 11 }}
@@ -377,43 +380,18 @@ export function DashboardMagik() {
                       borderRadius: 12,
                       color: '#f4f4f5',
                     }}
-                    formatter={(v, name) => {
-                      const label = String(name).startsWith('renda:')
-                        ? `↑ ${String(name).slice(6)}`
-                        : String(name)
+                    formatter={(v, _name, props) => {
+                      const bar = props.payload as { type: string; name: string }
+                      const label = bar.type === 'income' ? `↑ Renda` : 'Gasto'
                       return [fmt(Number(v ?? 0)), label]
                     }}
                     labelFormatter={(l) => String(l)}
                   />
-                  <Legend
-                    verticalAlign="bottom"
-                    iconType="circle"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: 11, color: '#a1a1aa', paddingTop: 8 }}
-                    formatter={(value) =>
-                      String(value).startsWith('renda:')
-                        ? `↑ ${String(value).slice(6)}`
-                        : String(value)
-                    }
-                  />
-                  {yearCatData.categories.map((cat) => (
-                    <Bar
-                      key={cat.name}
-                      dataKey={cat.name}
-                      stackId="cats"
-                      fill={cat.color}
-                      radius={[0, 0, 0, 0]}
-                    />
-                  ))}
-                  {yearCatData.incomeCategories.map((src) => (
-                    <Bar
-                      key={src.name}
-                      dataKey={src.name}
-                      stackId="income"
-                      fill={src.color}
-                      radius={[0, 0, 0, 0]}
-                    />
-                  ))}
+                  <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                    {yearCatData.bars.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             )}
