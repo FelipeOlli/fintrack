@@ -478,14 +478,21 @@ function renderContasCadastradas() {
 function renderBills() {
   const tb = document.getElementById('billsBody')
   if (!tb) return
+  populateBillFilters()
   tb.innerHTML = ''
   const filter = session.billsFilter.toLowerCase()
+  const fCat = session.filterCategoria
+  const fConta = session.filterConta
+  const fStatus = session.filterStatus
   session.currentBills.forEach((bill, i) => {
     if (filter) {
       const accountLabel = bill.accountId ? getAccountName(bill.accountId) : ''
       const haystack = `${bill.name} ${bill.category} ${bill.obs || ''} ${accountLabel}`.toLowerCase()
       if (!haystack.includes(filter)) return
     }
+    if (fCat && bill.category !== fCat) return
+    if (fConta && bill.accountId !== fConta) return
+    if (fStatus && bill.status !== fStatus) return
     const rec = isRecurring(bill)
     const recorrenteCell = `<button type="button" class="btn-recorrente-toggle${rec ? ' is-active' : ''}">${
       rec ? '🔂' : '❌'
@@ -537,6 +544,40 @@ function renderBills() {
     }
     tb.appendChild(tr)
   })
+}
+
+function populateBillFilters() {
+  const selCat = document.getElementById('filterCategoria') as HTMLSelectElement | null
+  const selConta = document.getElementById('filterConta') as HTMLSelectElement | null
+  if (selCat) {
+    const prev = selCat.value
+    selCat.innerHTML = '<option value="">Todas as categorias</option>'
+    const cats = Array.from(new Set(session.currentBills.map((b) => b.category).filter(Boolean))).sort()
+    cats.forEach((c) => {
+      const opt = document.createElement('option')
+      opt.value = c
+      opt.textContent = c
+      selCat.appendChild(opt)
+    })
+    selCat.value = cats.includes(prev) ? prev : ''
+    session.filterCategoria = selCat.value
+  }
+  if (selConta) {
+    const prev = selConta.value
+    selConta.innerHTML = '<option value="">Todas as contas</option>'
+    const accounts = getAccounts()
+    const usedIds = Array.from(new Set(session.currentBills.map((b) => b.accountId).filter(Boolean))) as string[]
+    usedIds.forEach((id) => {
+      const acc = accounts.find((a) => a.id === id)
+      if (!acc) return
+      const opt = document.createElement('option')
+      opt.value = id
+      opt.textContent = acc.name
+      selConta.appendChild(opt)
+    })
+    selConta.value = usedIds.includes(prev) ? prev : ''
+    session.filterConta = selConta.value
+  }
 }
 
 function initMonthSel() {
@@ -1506,6 +1547,26 @@ function App() {
             else if (session.currentPage === 'categorias') renderCategoriasPage()
             else if (session.currentPage === 'contas-cadastradas') renderContasCadastradas()
             else if (session.currentPage === 'fontes-renda') renderFontesRendaPage()
+          })
+        }
+
+        const selCat = document.getElementById('filterCategoria') as HTMLSelectElement | null
+        const selConta = document.getElementById('filterConta') as HTMLSelectElement | null
+        const selStatus = document.getElementById('filterStatus') as HTMLSelectElement | null
+        const btnLimpar = document.getElementById('btnLimparFiltros') as HTMLButtonElement | null
+
+        if (selCat) selCat.addEventListener('change', () => { session.filterCategoria = selCat.value; renderBills() })
+        if (selConta) selConta.addEventListener('change', () => { session.filterConta = selConta.value; renderBills() })
+        if (selStatus) selStatus.addEventListener('change', () => { session.filterStatus = selStatus.value; renderBills() })
+        if (btnLimpar) {
+          btnLimpar.addEventListener('click', () => {
+            session.filterCategoria = ''
+            session.filterConta = ''
+            session.filterStatus = ''
+            if (selCat) selCat.value = ''
+            if (selConta) selConta.value = ''
+            if (selStatus) selStatus.value = ''
+            renderBills()
           })
         }
       } catch (err) {

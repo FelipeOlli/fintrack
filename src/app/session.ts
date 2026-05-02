@@ -14,4 +14,7 @@ export const session = {
   importProjection: {} as Record<string, ExtractedItem[]>,
   currentPage: 'dashboard' as string,
   billsFilter: '' as string,
+  filterCategoria: '' as string,
+  filterConta: '' as string,
+  filterStatus: '' as string,
 }

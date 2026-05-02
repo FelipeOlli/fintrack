@@ -195,6 +195,74 @@ export function FinTrackContent() {
           </div>
         </div>
 
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            marginBottom: 12,
+          }}
+        >
+          <select
+            id="filterCategoria"
+            style={{
+              flex: '1 1 160px',
+              minWidth: 140,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              background: 'var(--card)',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+            }}
+          >
+            <option value="">Todas as categorias</option>
+          </select>
+          <select
+            id="filterConta"
+            style={{
+              flex: '1 1 160px',
+              minWidth: 140,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              background: 'var(--card)',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+            }}
+          >
+            <option value="">Todas as contas</option>
+          </select>
+          <select
+            id="filterStatus"
+            style={{
+              flex: '1 1 140px',
+              minWidth: 130,
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid var(--border)',
+              background: 'var(--card)',
+              color: 'var(--text)',
+              fontSize: '0.85rem',
+            }}
+          >
+            <option value="">Todos os status</option>
+            <option value="pago">✅ Pago</option>
+            <option value="pendente">⏳ Pendente</option>
+            <option value="divida">🔴 Dívida</option>
+            <option value="vazio">— S/ info</option>
+          </select>
+          <button
+            id="btnLimparFiltros"
+            type="button"
+            className="btn btn-outline"
+            style={{ fontSize: '0.82rem', padding: '5px 12px', whiteSpace: 'nowrap' }}
+          >
+            Limpar filtros
+          </button>
+        </div>
+
         <div className="card">
           <div className="bills-wrap">
             <table>
