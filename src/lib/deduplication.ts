@@ -14,6 +14,23 @@ export function normalizeBillName(name: string): string {
     .trim()
 }
 
+/** Versão compactada: remove todos os espaços para comparação insensível a espaçamento. */
+function compact(normalized: string): string {
+  return normalized.replace(/\s/g, '')
+}
+
+/** Retorna true se dois nomes normalizados são considerados equivalentes. */
+function namesMatch(a: string, b: string): boolean {
+  if (a === b) return true
+  const ca = compact(a)
+  const cb = compact(b)
+  if (ca === cb) return true
+  const minLen = 4
+  if (a.length >= minLen && b.length >= minLen && (a.includes(b) || b.includes(a))) return true
+  if (ca.length >= minLen && cb.length >= minLen && (ca.includes(cb) || cb.includes(ca))) return true
+  return false
+}
+
 export function matchAgainstExisting(
   item: ExtractedItem,
   existingBills: Bill[],
@@ -24,18 +41,8 @@ export function matchAgainstExisting(
   for (const bill of existingBills) {
     const billName = normalizeBillName(bill.name)
     const valueMatch = Math.abs(item.value - bill.value) < 0.01
-
     if (!valueMatch) continue
-
-    if (itemName === billName) return 'duplicate'
-
-    if (
-      itemName.length >= 4 &&
-      billName.length >= 4 &&
-      (billName.includes(itemName) || itemName.includes(billName))
-    ) {
-      return 'duplicate'
-    }
+    if (namesMatch(itemName, billName)) return 'duplicate'
   }
   return 'new'
 }
@@ -103,13 +110,11 @@ export function enrichCategoriesFromHistory(items: ExtractedItem[]): void {
       continue
     }
 
-    // Busca por substring (nome parcial)
-    if (normItem.length >= 4) {
-      for (const [normB, cat] of catByNorm) {
-        if (normB.length >= 4 && (normItem.includes(normB) || normB.includes(normItem))) {
-          item.category = cat
-          break
-        }
+    // Busca por similaridade (substring ou compactado)
+    for (const [normB, cat] of catByNorm) {
+      if (namesMatch(normItem, normB)) {
+        item.category = cat
+        break
       }
     }
   }
