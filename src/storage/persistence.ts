@@ -303,6 +303,30 @@ export function propagateCategoryChange(billName: string, oldCategory: string, n
   }
 }
 
+/** Propaga mudança de conta para todos os meses onde o lançamento (por nome + categoria) existe. */
+export function propagateAccountChange(billName: string, category: string, newAccountId: string | undefined, skipMonthKey?: string): void {
+  const INSTALLMENT_RE = /^(.+) · Parc \d+\/(\d+)$/
+  const instMatch = INSTALLMENT_RE.exec(billName)
+  const nameTest: (n: string) => boolean = instMatch
+    ? (n) => { const m = INSTALLMENT_RE.exec(n); return !!m && m[1] === instMatch[1] && m[2] === instMatch[2] }
+    : (n) => n === billName
+  const keys = listBillsStorageKeysSorted()
+  for (const storageKey of keys) {
+    const monthKey = storageKey.replace(/^bills_/, '')
+    if (monthKey === skipMonthKey) continue
+    const bills = readBillsMonth(monthKey)
+    if (!bills) continue
+    let changed = false
+    for (const b of bills) {
+      if (nameTest(b.name) && b.category === category && b.accountId !== newAccountId) {
+        b.accountId = newAccountId
+        changed = true
+      }
+    }
+    if (changed) writeBillsMonth(monthKey, bills)
+  }
+}
+
 /** Chaves `bills_*` ordenadas (lexicográfico = ordem cronológica com YYYY_MM). */
 export function listBillsStorageKeysSorted(): string[] {
   if (!persistenceUsesApi()) {

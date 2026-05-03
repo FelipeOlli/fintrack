@@ -30,6 +30,7 @@ import {
   listBillsStorageKeysSorted,
   persistenceUsesApi,
   propagateCategoryChange,
+  propagateAccountChange,
   readBillsMonth,
   saveAccounts,
   saveCategories,
@@ -1042,6 +1043,9 @@ function saveEditBill() {
       recTemplates[recIdx].category = category
       saveRecurringTemplates(recTemplates)
     }
+  }
+  if ((accountId || undefined) !== bill.accountId) {
+    propagateAccountChange(bill.name, category, accountId || undefined, session.currentMonth)
   }
   session.editingBillIndex = null
   closeLancamentoModal()
