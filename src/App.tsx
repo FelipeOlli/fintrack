@@ -1231,10 +1231,11 @@ function renderExtracted() {
           : ''
       }</label>
       <select onchange="window.__extUpdateCat && window.__extUpdateCat(${i}, this.value)">
-        ${IMPORT_CATEGORY_OPTIONS.map(
-          (c) =>
-            `<option ${c === it.category ? 'selected' : ''} value="${c}">${c}</option>`,
-        ).join('')}
+        ${(() => {
+          const cats = getCategories().map((c) => c.name)
+          if (it.category && !cats.includes(it.category)) cats.push(it.category)
+          return cats.map((c) => `<option ${c === it.category ? 'selected' : ''} value="${esc(c)}">${esc(c)}</option>`).join('')
+        })()}
       </select>
       <input type="number" value="${
         it.value
