@@ -34,7 +34,7 @@ export function matchAgainstExisting(
       billName.length >= 4 &&
       (billName.includes(itemName) || itemName.includes(billName))
     ) {
-      return 'similar'
+      return 'duplicate'
     }
   }
   return 'new'
