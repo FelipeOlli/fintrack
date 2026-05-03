@@ -151,6 +151,8 @@ export function saveIncomeSources(sources: IncomeSource[]): void {
     localStorage.setItem(INCOME_SOURCES_KEY, JSON.stringify(sources))
     return
   }
+  // Proteção: não envia lista vazia se já existem fontes no cache (evita wipe acidental)
+  if (sources.length === 0 && needCache().incomeSources.length > 0) return
   needCache().incomeSources = sources
   void apiPut('api/income-sources', { sources })
 }

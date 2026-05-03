@@ -212,16 +212,15 @@ fastify.put<{ Body: { sources?: IncomeSource[] }; Querystring: { workspaceId?: s
     const c = await pool.connect()
     try {
       await c.query('BEGIN')
-      // Remove apenas fontes que não estão mais na lista (evita cascade em month_income)
+      // Remove apenas fontes ausentes da lista — nunca apaga tudo de uma vez (evita cascade em month_income)
       if (sources.length > 0) {
         const ids = sources.map((s) => s.id)
         await c.query(
           `DELETE FROM income_source WHERE workspace_id = $1 AND id <> ALL($2::text[])`,
           [ws, ids],
         )
-      } else {
-        await c.query('DELETE FROM income_source WHERE workspace_id = $1', [ws])
       }
+      // Se sources vier vazio, não faz nada (proteção contra wipe acidental)
       // Upsert cada fonte (preserva month_income existente)
       for (const s of sources) {
         await c.query(
