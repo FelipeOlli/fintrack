@@ -19,7 +19,7 @@ function compact(normalized: string): string {
   return normalized.replace(/\s/g, '')
 }
 
-/** Retorna true se dois nomes normalizados são considerados equivalentes. */
+/** Retorna true se dois nomes normalizados são considerados equivalentes (duplicate). */
 function namesMatch(a: string, b: string): boolean {
   if (a === b) return true
   const ca = compact(a)
@@ -31,6 +31,21 @@ function namesMatch(a: string, b: string): boolean {
   return false
 }
 
+/**
+ * Retorna true se os tokens significativos (≥4 chars) dos dois nomes se sobrepõem
+ * o suficiente para indicar que podem ser o mesmo lançamento (similar).
+ * Ex: "ifd manjericao pizzari" e "manjericao pizzaria" compartilham "manjericao".
+ */
+function tokensSimilar(a: string, b: string): boolean {
+  const sig = (s: string) => s.split(' ').filter((t) => t.length >= 4)
+  const ta = sig(a)
+  const tb = sig(b)
+  if (!ta.length || !tb.length) return false
+  const shared = ta.filter((t) => tb.includes(t))
+  const minTokens = Math.min(ta.length, tb.length)
+  return shared.length >= Math.max(1, Math.floor(minTokens / 2))
+}
+
 export function matchAgainstExisting(
   item: ExtractedItem,
   existingBills: Bill[],
@@ -38,13 +53,15 @@ export function matchAgainstExisting(
   const itemName = normalizeBillName(item.cleanName || item.name)
   if (!itemName) return 'new'
 
+  let foundSimilar = false
   for (const bill of existingBills) {
     const billName = normalizeBillName(bill.name)
     const valueMatch = Math.abs(item.value - bill.value) < 0.01
     if (!valueMatch) continue
     if (namesMatch(itemName, billName)) return 'duplicate'
+    if (tokensSimilar(itemName, billName)) foundSimilar = true
   }
-  return 'new'
+  return foundSimilar ? 'similar' : 'new'
 }
 
 /**
