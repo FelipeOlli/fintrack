@@ -1,16 +1,17 @@
 import type { Bill, ExtractedItem } from '../domain/types'
-import { readBillsMonth } from '../storage/persistence'
+import { listBillsStorageKeysSorted, readBillsMonth } from '../storage/persistence'
 
-/** Remove acentos, lowercase, colapsa espaços, remove ruído. */
+/** Remove acentos, lowercase, separadores e ruído para comparação de nomes. */
 export function normalizeBillName(name: string): string {
   return name
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/\b(pag|pagamento|compra|parc|parcela)\b/g, '')
     .replace(/\d{1,2}\s*[/\\]\s*\d{1,2}/g, '')
-    .trim()
+    .replace(/[·\-|]/g, ' ')
     .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 export function matchAgainstExisting(
@@ -58,6 +59,47 @@ export function deduplicateAcrossMonths(
         item.matchedMonthKey = monthKey
       } else {
         item.matchStatus = 'new'
+      }
+    }
+  }
+}
+
+/** Lê todos os bills salvos em todos os meses. */
+function getAllHistoricalBills(): Bill[] {
+  const bills: Bill[] = []
+  for (const storageKey of listBillsStorageKeysSorted()) {
+    const mk = storageKey.replace('bills_', '')
+    const monthBills = readBillsMonth(mk)
+    if (monthBills) bills.push(...monthBills)
+  }
+  return bills
+}
+
+/**
+ * Para cada item com categoria "Outros" ou vazia, busca no histórico completo
+ * de bills se já existe um lançamento com nome similar categorizado. Se sim,
+ * herda a categoria.
+ */
+export function enrichCategoriesFromHistory(items: ExtractedItem[]): void {
+  const historical = getAllHistoricalBills()
+  if (!historical.length) return
+
+  for (const item of items) {
+    if (item.category && item.category !== 'Outros') continue
+    const normItem = normalizeBillName(item.cleanName || item.name)
+    if (!normItem) continue
+
+    for (const b of historical) {
+      if (!b.category || b.category === 'Outros') continue
+      const normB = normalizeBillName(b.name)
+      if (!normB) continue
+      if (
+        normItem === normB ||
+        (normItem.length >= 4 && normB.length >= 4 &&
+          (normItem.includes(normB) || normB.includes(normItem)))
+      ) {
+        item.category = b.category
+        break
       }
     }
   }

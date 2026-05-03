@@ -1,5 +1,5 @@
 import type { ExtractedItem } from '../domain/types'
-import { deduplicateAcrossMonths } from './deduplication'
+import { deduplicateAcrossMonths, enrichCategoriesFromHistory } from './deduplication'
 import { computeInstallmentMonths } from './monthKeyUtils'
 
 /**
@@ -42,5 +42,7 @@ export function buildImportProjection(
   }
 
   deduplicateAcrossMonths(projection)
+  // herda categorias do histórico para itens ainda sem categoria definida
+  enrichCategoriesFromHistory(Object.values(projection).flat())
   return projection
 }

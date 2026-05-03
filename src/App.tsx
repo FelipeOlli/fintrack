@@ -11,6 +11,7 @@ import { CAT_COLORS, IMPORT_CATEGORY_OPTIONS, MONTHS } from './constants/categor
 import type { Bill, BillStatus, CardType, RecurringValueMode } from './domain/types'
 import { bumpDash } from './lib/dashboardSync'
 import { esc, fmt, setText } from './lib/format'
+import { enrichCategoriesFromHistory } from './lib/deduplication'
 import { buildImportProjection } from './lib/importProjection'
 import { parseTransactionsFromText } from './lib/pdfImportFromText'
 import { mkKey } from './storage/keys'
@@ -1192,6 +1193,7 @@ async function handlePdf(file: File | null | undefined) {
       session.extractedData = parseTransactionsFromText(txt)
     }
 
+    enrichCategoriesFromHistory(session.extractedData)
     session.importStep = 1
     renderExtracted()
     renderImportSteps()
