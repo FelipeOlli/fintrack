@@ -76,30 +76,40 @@ function getAllHistoricalBills(): Bill[] {
 }
 
 /**
- * Para cada item com categoria "Outros" ou vazia, busca no histórico completo
- * de bills se já existe um lançamento com nome similar categorizado. Se sim,
- * herda a categoria.
+ * Para cada item importado, busca no histórico completo de bills se já existe
+ * um lançamento com nome similar categorizado. O histórico tem prioridade sobre
+ * a categorização automática (Claude/keywords), pois reflete escolhas anteriores
+ * do usuário. O usuário pode ainda corrigir na tela de revisão.
  */
 export function enrichCategoriesFromHistory(items: ExtractedItem[]): void {
   const historical = getAllHistoricalBills()
   if (!historical.length) return
 
+  // Índice: nome normalizado → categoria (prioriza categorias não-"Outros")
+  const catByNorm = new Map<string, string>()
+  for (const b of historical) {
+    if (!b.category || b.category === 'Outros') continue
+    const normB = normalizeBillName(b.name)
+    if (normB && !catByNorm.has(normB)) catByNorm.set(normB, b.category)
+  }
+
   for (const item of items) {
-    if (item.category && item.category !== 'Outros') continue
     const normItem = normalizeBillName(item.cleanName || item.name)
     if (!normItem) continue
 
-    for (const b of historical) {
-      if (!b.category || b.category === 'Outros') continue
-      const normB = normalizeBillName(b.name)
-      if (!normB) continue
-      if (
-        normItem === normB ||
-        (normItem.length >= 4 && normB.length >= 4 &&
-          (normItem.includes(normB) || normB.includes(normItem)))
-      ) {
-        item.category = b.category
-        break
+    // Busca exata primeiro
+    if (catByNorm.has(normItem)) {
+      item.category = catByNorm.get(normItem)!
+      continue
+    }
+
+    // Busca por substring (nome parcial)
+    if (normItem.length >= 4) {
+      for (const [normB, cat] of catByNorm) {
+        if (normB.length >= 4 && (normItem.includes(normB) || normB.includes(normItem))) {
+          item.category = cat
+          break
+        }
       }
     }
   }
