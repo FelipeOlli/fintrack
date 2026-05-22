@@ -948,6 +948,9 @@ td select:focus {
 
 .td-recorrente {
   white-space: nowrap;
+  width: 1%;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .btn-recorrente-toggle {
@@ -984,9 +987,16 @@ td select:focus {
 
 .td-actions {
   white-space: nowrap;
+  width: 1%;
+  padding-left: 8px;
+  padding-right: 12px;
+}
+
+.td-actions-inner {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .add-bill-bar {

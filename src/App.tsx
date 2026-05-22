@@ -518,7 +518,7 @@ function renderBills() {
       </td>
       <td><input type="text" value="${esc(bill.obs || '')}" placeholder="Nota..."></td>
       <td class="td-recorrente">${recorrenteCell}</td>
-      <td class="td-actions"><button type="button" class="btn-ghost-sm btn-edit-bill" data-i="${i}">Editar</button><button type="button" class="btn-icon btn-del-bill">🗑</button></td>
+      <td class="td-actions"><div class="td-actions-inner"><button type="button" class="btn-ghost-sm btn-edit-bill" data-i="${i}">Editar</button><button type="button" class="btn-icon btn-del-bill">🗑</button></div></td>
     `
     const valueInput = tr.querySelector('input[type="number"]') as HTMLInputElement
     const statusSelect = tr.querySelector('select') as HTMLSelectElement
