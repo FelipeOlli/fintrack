@@ -657,6 +657,10 @@ function loadMonth() {
   const label = `${monthName} ${parts[0] || ''}`
   setText('dashTitle', label)
   setText('contasMonthLabel', label)
+  const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1
+  const nextYear = monthNum === 12 ? String(Number(parts[0]) + 1) : parts[0]
+  const nextMonthName = MONTHS[nextMonthNum - 1]
+  setText('dashFaturaLembrete', `📅 Compras deste mês vencem na fatura de ${nextMonthName} ${nextYear}`)
   renderBills()
   updateKPIs()
   renderDashCharts()

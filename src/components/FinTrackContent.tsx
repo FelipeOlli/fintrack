@@ -10,6 +10,7 @@ export function FinTrackContent() {
         <div className="page-header">
           <h2 id="dashTitle">Fevereiro 2026</h2>
           <p>Resumo financeiro mensal · Atualizado agora</p>
+          <p id="dashFaturaLembrete" style={{ fontSize: '0.78rem', color: 'var(--amber, #f59e0b)', marginTop: 2 }} />
         </div>
 
         <div className="kpi-grid kpi-grid--magik">
