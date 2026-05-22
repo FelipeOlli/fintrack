@@ -53,20 +53,36 @@ declare const pdfjsLib: {
   GlobalWorkerOptions: { workerSrc: string }
 }
 
-function askRecurringValueMode(currentValue: number): RecurringValueMode {
-  const formatted = (currentValue || 0).toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
+function askRecurringValueMode(currentValue: number): Promise<RecurringValueMode | 'cancel'> {
+  const formatted = (currentValue || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modalRecurringValue')
+    const sameBtn = document.getElementById('modalRecurringValueSame') as HTMLButtonElement | null
+    const zeroBtn = document.getElementById('modalRecurringValueZero')
+    const cancelBtn = document.getElementById('modalRecurringValueCancel')
+    const backdrop = document.getElementById('modalRecurringValueBackdrop')
+    if (!modal || !sameBtn) { resolve('cancel'); return }
+    sameBtn.textContent = `Manter valor atual (${formatted})`
+    modal.classList.add('modal-visible')
+    const close = (result: RecurringValueMode | 'cancel') => {
+      modal.classList.remove('modal-visible')
+      sameBtn.removeEventListener('click', onSame)
+      zeroBtn?.removeEventListener('click', onZero)
+      cancelBtn?.removeEventListener('click', onCancel)
+      backdrop?.removeEventListener('click', onCancel)
+      resolve(result)
+    }
+    const onSame = () => close('same')
+    const onZero = () => close('zero')
+    const onCancel = () => close('cancel')
+    sameBtn.addEventListener('click', onSame)
+    zeroBtn?.addEventListener('click', onZero)
+    cancelBtn?.addEventListener('click', onCancel)
+    backdrop?.addEventListener('click', onCancel)
   })
-  const useSame = window.confirm(
-    `Esta conta será criada automaticamente nos próximos meses.\n\n` +
-      `Clique em OK para repetir com o valor atual (${formatted}).\n` +
-      `Clique em Cancelar para criar com valor zerado (R$ 0,00).`,
-  )
-  return useSame ? 'same' : 'zero'
 }
 
-function createRecurringTemplateFromBill(bill: {
+async function createRecurringTemplateFromBill(bill: {
   name: string
   category: string
   value: number
@@ -78,7 +94,8 @@ function createRecurringTemplateFromBill(bill: {
     (r) => r.name === bill.name && r.category === bill.category,
   )
   if (already) return
-  const mode = askRecurringValueMode(bill.value || 0)
+  const mode = await askRecurringValueMode(bill.value || 0)
+  if (mode === 'cancel') return
   const tplValue = mode === 'same' ? bill.value || 0 : 0
   list.push({
     name: bill.name,
@@ -132,8 +149,8 @@ async function descontinuarRecurrente(name: string, category: string) {
   showToast('Conta descontinuada. Meses anteriores preservados.')
 }
 
-function tornarRecorrente(bill: Bill) {
-  createRecurringTemplateFromBill({
+async function tornarRecorrente(bill: Bill) {
+  await createRecurringTemplateFromBill({
     name: bill.name,
     category: bill.category,
     value: bill.value || 0,

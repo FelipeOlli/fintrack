@@ -741,6 +741,28 @@ export function FinTrackContent() {
     </div>
       </div>
 
+      {/* Modal: definir valor da recorrência */}
+      <div id="modalRecurringValue" className="modal" role="dialog">
+        <div className="modal-backdrop" id="modalRecurringValueBackdrop" />
+        <div className="modal-box" style={{ maxWidth: 420 }}>
+          <div className="modal-header">
+            <h3>Definir como recorrente</h3>
+          </div>
+          <div className="modal-body">
+            <p style={{ fontSize: '0.9rem', color: 'var(--text2)', marginBottom: 16 }}>
+              Esta conta será criada automaticamente nos próximos meses. Qual valor usar no template?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button type="button" className="btn btn-primary" id="modalRecurringValueSame" style={{ justifyContent: 'center' }} />
+              <button type="button" className="btn btn-outline" id="modalRecurringValueZero" style={{ justifyContent: 'center' }}>Valor zerado (R$ 0,00)</button>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline" id="modalRecurringValueCancel">Cancelar</button>
+          </div>
+        </div>
+      </div>
+
       {/* Modal de confirmação genérico */}
       <div id="modalConfirm" className="modal" role="dialog">
         <div className="modal-backdrop" id="modalConfirmBackdrop" />
