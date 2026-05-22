@@ -275,7 +275,6 @@ export function FinTrackContent() {
                   <th>Valor</th>
                   <th>Status</th>
                   <th>Obs.</th>
-                  <th>Recorrente</th>
                   <th />
                 </tr>
               </thead>
