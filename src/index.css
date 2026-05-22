@@ -2152,23 +2152,25 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-width: 160px;
+  min-width: 200px;
 }
 .dash-cat-legend-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
   align-items: center;
   gap: 8px;
   font-size: 0.82rem;
   color: var(--text2);
 }
 .dash-cat-legend-name {
-  flex: 1;
   color: var(--text);
 }
 .dash-cat-legend-val {
   font-weight: 600;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
 }
 @media (max-width: 640px) {
   .dash-cat-pie-row {
