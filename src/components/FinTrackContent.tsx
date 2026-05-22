@@ -741,6 +741,20 @@ export function FinTrackContent() {
     </div>
       </div>
 
+      {/* Modal de confirmação genérico */}
+      <div id="modalConfirm" className="modal" role="dialog">
+        <div className="modal-backdrop" id="modalConfirmBackdrop" />
+        <div className="modal-box" style={{ maxWidth: 400 }}>
+          <div className="modal-body" style={{ padding: '24px 24px 8px' }}>
+            <p id="modalConfirmMsg" style={{ fontSize: '0.95rem', lineHeight: 1.5 }} />
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline" id="modalConfirmCancel">Cancelar</button>
+            <button type="button" className="btn btn-danger" id="modalConfirmOk">Confirmar</button>
+          </div>
+        </div>
+      </div>
+
       <div className="toast" id="toast" />
     </>
   )

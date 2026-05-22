@@ -96,8 +96,34 @@ function isRecurring(bill: Bill): boolean {
   )
 }
 
-function descontinuarRecurrente(name: string, category: string) {
-  if (!confirm(`Descontinuar conta recorrente "${name}"? Ela não aparecerá nos próximos meses, mas os meses já salvos permanecem.`)) return
+function showConfirm(msg: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modalConfirm')
+    const msgEl = document.getElementById('modalConfirmMsg')
+    const okBtn = document.getElementById('modalConfirmOk')
+    const cancelBtn = document.getElementById('modalConfirmCancel')
+    const backdrop = document.getElementById('modalConfirmBackdrop')
+    if (!modal || !msgEl || !okBtn || !cancelBtn) { resolve(false); return }
+    msgEl.textContent = msg
+    modal.classList.add('modal-visible')
+    const close = (result: boolean) => {
+      modal.classList.remove('modal-visible')
+      okBtn.removeEventListener('click', onOk)
+      cancelBtn.removeEventListener('click', onCancel)
+      backdrop?.removeEventListener('click', onCancel)
+      resolve(result)
+    }
+    const onOk = () => close(true)
+    const onCancel = () => close(false)
+    okBtn.addEventListener('click', onOk)
+    cancelBtn.addEventListener('click', onCancel)
+    backdrop?.addEventListener('click', onCancel)
+  })
+}
+
+async function descontinuarRecurrente(name: string, category: string) {
+  const ok = await showConfirm(`Descontinuar conta recorrente "${name}"? Ela não aparecerá nos próximos meses, mas os meses já salvos permanecem.`)
+  if (!ok) return
   const list = getRecurringTemplates().filter(
     (r) => !(r.name === name && r.category === category),
   )
