@@ -893,6 +893,10 @@ function clearLancamentoForm() {
   if (statusSelect) statusSelect.value = 'pendente'
   if (accountSelect && accountSelect.options.length > 0) accountSelect.selectedIndex = 0
   if (obsInput) obsInput.value = ''
+  const docFile = document.getElementById('modalLancDocFile') as HTMLInputElement | null
+  const docName = document.getElementById('modalLancDocName')
+  if (docFile) docFile.value = ''
+  if (docName) docName.textContent = ''
 }
 
 function openEditBillModal(i: number) {
@@ -1205,6 +1209,98 @@ async function handlePdf(file: File | null | undefined) {
   } catch {
     proc.classList.remove('visible')
     showToast('Erro ao ler PDF. Verifique se não é protegido.', true)
+  }
+}
+
+async function analyzeBillDocument(file: File | undefined) {
+  if (!file) return
+
+  if (!persistenceUsesApi()) {
+    showToast('Análise de documento requer conexão com a API', true)
+    return
+  }
+
+  const btn = document.getElementById('modalLancDocBtn') as HTMLButtonElement | null
+  const nameSpan = document.getElementById('modalLancDocName')
+  if (btn) { btn.disabled = true; btn.textContent = 'Analisando...' }
+  if (nameSpan) nameSpan.textContent = file.name
+
+  try {
+    const catNames = getCategories().map((c) => c.name)
+    const base = import.meta.env.VITE_API_URL || ''
+    const url = base.startsWith('http') ? base : ''
+
+    let body: Record<string, unknown>
+
+    if (file.type === 'application/pdf') {
+      const ab = await file.arrayBuffer()
+      const view = new Uint8Array(ab)
+      let pdfData: ArrayBuffer = ab
+      for (let i = 0; i < Math.min(view.length - 4, 1_000_000); i++) {
+        if (view[i] === 0x25 && view[i + 1] === 0x50 && view[i + 2] === 0x44 && view[i + 3] === 0x46) {
+          if (i > 0) pdfData = ab.slice(i)
+          break
+        }
+      }
+      const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
+      let txt = ''
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const pg = await pdf.getPage(p)
+        const ct = await pg.getTextContent()
+        txt += `${ct.items.map((i) => i.str).join(' ')}\n`
+      }
+      body = { type: 'text', content: txt, categories: catNames }
+    } else {
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const dataUrl = reader.result as string
+          resolve(dataUrl.split(',')[1] ?? '')
+        }
+        reader.onerror = reject
+        reader.readAsDataURL(file)
+      })
+      body = { type: 'image', content: b64, mimeType: file.type || 'image/jpeg', categories: catNames }
+    }
+
+    const res = await fetch(`${url}/api/analyze-bill-document`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      showToast((err as { error?: string }).error || 'Erro ao analisar documento', true)
+      return
+    }
+
+    const data = await res.json() as { bill: { name?: string; value?: number; category?: string; status?: string; obs?: string } }
+    const bill = data.bill
+
+    const nameInput = document.getElementById('modalLancName') as HTMLInputElement | null
+    const valueInput = document.getElementById('modalLancValue') as HTMLInputElement | null
+    const catSelect = document.getElementById('modalLancCat') as HTMLSelectElement | null
+    const statusSelect = document.getElementById('modalLancStatus') as HTMLSelectElement | null
+    const obsInput = document.getElementById('modalLancObs') as HTMLInputElement | null
+
+    if (nameInput && bill.name) nameInput.value = bill.name
+    if (valueInput && bill.value != null) valueInput.value = String(bill.value)
+    if (catSelect && bill.category) {
+      const opt = Array.from(catSelect.options).find((o) => o.value === bill.category)
+      if (opt) catSelect.value = bill.category
+    }
+    if (statusSelect && bill.status) {
+      const validStatuses = ['pendente', 'pago', 'divida', 'vazio']
+      if (validStatuses.includes(bill.status)) statusSelect.value = bill.status
+    }
+    if (obsInput && bill.obs) obsInput.value = bill.obs
+
+    showToast('✅ Campos preenchidos pela IA — confira antes de salvar')
+  } catch {
+    showToast('Erro ao processar documento', true)
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📎 Anexar documento' }
   }
 }
 
@@ -1654,6 +1750,7 @@ function App() {
       closeLancamentoModal,
       saveLancamentoModal,
       handlePdf,
+      analyzeBillDocument,
       toggleAllExt,
       importSelected,
       buildAndShowPreview,

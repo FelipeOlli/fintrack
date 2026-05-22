@@ -20,6 +20,7 @@ export type FinTrackCtx = {
   closeLancamentoModal: () => void
   saveLancamentoModal: () => void
   handlePdf: (file: File | undefined) => void
+  analyzeBillDocument: (file: File | undefined) => void
   toggleAllExt: (value: boolean) => void
   importSelected: () => void
   buildAndShowPreview: () => void

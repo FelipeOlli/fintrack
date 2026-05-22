@@ -432,6 +432,64 @@ ${text}`,
   }
 })
 
+// ── Análise de documento único via Claude (comprovante/nota) ──
+type AnalyzeBillBody = {
+  type: 'image' | 'text'
+  content: string
+  mimeType?: string
+  categories: string[]
+}
+
+fastify.post<{ Body: AnalyzeBillBody }>('/api/analyze-bill-document', async (request, reply) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return reply.status(501).send({ error: 'ANTHROPIC_API_KEY não configurada' })
+  }
+
+  const { type, content, mimeType, categories } = request.body
+  if (!content || typeof content !== 'string') {
+    return reply.status(400).send({ error: 'Campo "content" obrigatório' })
+  }
+
+  const catList = (categories ?? []).join(', ') || 'Moradia, Transporte, Alimentação, Saúde, Lazer, Financeiro, Outros'
+  const systemPrompt = `Você analisa comprovantes, recibos e notas fiscais brasileiras.
+Extraia UM único lançamento financeiro do documento e retorne SOMENTE um JSON flat:
+{ "name": "descrição limpa (max 60 chars)", "value": 0.0, "category": "uma de: ${catList}", "status": "pendente ou pago", "obs": "informação extra útil ou vazio" }
+Regras: valor em reais (number positivo). Se o documento já estiver quitado use "pago", senão "pendente".
+Retorne APENAS o JSON, sem markdown, sem explicação.`
+
+  const anthropic = new Anthropic({ apiKey })
+
+  type ContentBlock = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  const userContent: ContentBlock[] = type === 'image'
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: content } },
+        { type: 'text', text: systemPrompt },
+      ]
+    : [{ type: 'text', text: `${systemPrompt}\n\nTexto do documento:\n${content}` }]
+
+  const msg = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: userContent as Parameters<typeof anthropic.messages.create>[0]['messages'][0]['content'] }],
+  })
+
+  const block = msg.content[0]
+  if (block.type !== 'text') {
+    return reply.status(500).send({ error: 'Resposta inesperada do Claude' })
+  }
+
+  try {
+    const raw = block.text.trim()
+    const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0]
+    if (!jsonStr) throw new Error('JSON não encontrado')
+    const bill = JSON.parse(jsonStr)
+    return { bill }
+  } catch {
+    return reply.status(422).send({ error: 'Falha ao parsear resposta do Claude', raw: block.text })
+  }
+})
+
 try {
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
 } catch (err) {

@@ -685,6 +685,25 @@ export function FinTrackContent() {
           <input type="text" id="modalLancName" placeholder="Ex.: Luz, Supermercado, Parcela carro..." />
         </div>
         <div className="modal-field">
+          <input
+            type="file"
+            id="modalLancDocFile"
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.gif"
+            style={{ display: 'none' }}
+            onChange={(e) => ft.analyzeBillDocument(e.target.files?.[0])}
+          />
+          <button
+            type="button"
+            className="btn btn-outline"
+            id="modalLancDocBtn"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => (document.getElementById('modalLancDocFile') as HTMLInputElement | null)?.click()}
+          >
+            📎 Preencher com documento (IA)
+          </button>
+          <span id="modalLancDocName" style={{ fontSize: 12, color: '#888', marginTop: 4, display: 'block' }} />
+        </div>
+        <div className="modal-field">
           <label htmlFor="modalLancCat">Categoria</label>
           <select id="modalLancCat">
             <option value="">Carregando...</option>

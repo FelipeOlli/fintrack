@@ -75,6 +75,13 @@ type CardType = 'nenhum' | 'credito' | 'debito'
 // → ver src/domain/types.ts
 ```
 
+### Navegação por mês
+
+- **Mês default ao abrir:** sempre o mês corrente do sistema (`new Date()`), calculado a cada carga em `initMonthSel()` (`src/App.tsx:585-619`). Não é persistido — decisão deliberada para sempre refletir "hoje".
+- **Mês ao criar lançamento:** o que estiver selecionado no seletor do topo. Não há inferência automática por data de vencimento de cartão.
+- **Formato:** `YYYY_MM` (ex: `2026_05`) — gerado por `mkKey()` em `src/storage/keys.ts:14-16`.
+- **Parcelas/importações:** distribuídas para meses futuros via `computeInstallmentMonths()` e `buildImportProjection()`.
+
 ### PDF Import com Claude AI
 
 Pipeline de importação de faturas (`src/app/` + `src/lib/`):
@@ -120,4 +127,5 @@ Backend (`server/.env`):
 
 ## Sessões recentes
 
-- **2026-04-28**: Import de faturas PDF com Claude AI (wizard 3 passos, detecção de parcelas, projeção multi-mês, deduplicação). Deploy Easypanel frontend + API. Correção de bugs: botão excluir bills, CORS, inicialização apiCache. Fontes de renda recorrentes com fallback de valor entre meses.
+- **2026-05-04**: Melhorias na deduplicação de importação: badge âmbar para borderline, comparação insensível a espaço/caixa, similares com valor igual não marcados como duplicata. Propagação de conta/cartão para todos os meses ao editar lançamento recorrente. Proteção contra wipe acidental de fontes de renda e valores mensais.
+- **2026-05-22**: Esclarecimento sobre navegação por mês (sem mudança de código). Documentado comportamento: mês corrente sempre ao abrir, mês selecionado no topo ao criar lançamento — decisão deliberada mantida.
