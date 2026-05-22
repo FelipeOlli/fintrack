@@ -39,7 +39,7 @@ type Bill = {
   accountId?: string
 }
 
-const fastify = Fastify({ logger: true })
+const fastify = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
 
 await fastify.register(cors, {
   origin: true,

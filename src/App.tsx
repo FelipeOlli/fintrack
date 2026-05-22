@@ -1255,12 +1255,28 @@ async function analyzeBillDocument(file: File | undefined) {
         const reader = new FileReader()
         reader.onload = () => {
           const dataUrl = reader.result as string
-          resolve(dataUrl.split(',')[1] ?? '')
+          const img = new Image()
+          img.onload = () => {
+            const MAX = 1500
+            let { width, height } = img
+            if (width > MAX || height > MAX) {
+              if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+              else { width = Math.round(width * MAX / height); height = MAX }
+            }
+            const canvas = document.createElement('canvas')
+            canvas.width = width
+            canvas.height = height
+            canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+            const resized = canvas.toDataURL('image/jpeg', 0.85)
+            resolve(resized.split(',')[1] ?? '')
+          }
+          img.onerror = reject
+          img.src = dataUrl
         }
         reader.onerror = reject
         reader.readAsDataURL(file)
       })
-      body = { type: 'image', content: b64, mimeType: file.type || 'image/jpeg', categories: catNames }
+      body = { type: 'image', content: b64, mimeType: 'image/jpeg', categories: catNames }
     }
 
     const res = await fetch(`${url}/api/analyze-bill-document`, {
