@@ -946,11 +946,17 @@ td select:focus {
   display: none;
 }
 
-.td-recorrente {
-  white-space: nowrap;
-  width: 1%;
+.bills-wrap thead th:nth-last-child(-n+2) {
+  width: 1px;
   padding-left: 8px;
   padding-right: 8px;
+}
+
+.td-recorrente {
+  white-space: nowrap;
+  width: 1px;
+  padding-left: 8px;
+  padding-right: 4px;
 }
 
 .btn-recorrente-toggle {
@@ -987,8 +993,8 @@ td select:focus {
 
 .td-actions {
   white-space: nowrap;
-  width: 1%;
-  padding-left: 8px;
+  width: 1px;
+  padding-left: 4px;
   padding-right: 12px;
 }
 
