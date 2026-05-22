@@ -344,7 +344,7 @@ body {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text2);
-  padding: 6px 14px;
+  padding: 5px 10px;
   border-radius: 10px;
   font-size: 0.8rem;
   cursor: pointer;
@@ -825,7 +825,7 @@ table {
 }
 
 thead th {
-  padding: 14px 16px;
+  padding: 10px 10px;
   text-align: left;
   font-size: 0.68rem;
   color: var(--text3);
@@ -851,7 +851,7 @@ tbody tr:hover {
 }
 
 tbody td {
-  padding: 14px 16px;
+  padding: 10px 10px;
   font-size: 0.88rem;
 }
 
@@ -862,7 +862,7 @@ tbody td {
 .td-cat span {
   background: var(--surface2);
   border: 1px solid var(--border);
-  padding: 4px 11px;
+  padding: 3px 8px;
   border-radius: 99px;
   font-size: 0.74rem;
   font-weight: 500;
@@ -882,11 +882,11 @@ td input[type='text'] {
 }
 
 td input[type='number'] {
-  width: 118px;
+  width: 80px;
 }
 
 td input[type='text'] {
-  width: 150px;
+  width: 120px;
 }
 
 td input:focus {
@@ -973,7 +973,7 @@ td select:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 5px 12px;
+  padding: 4px 7px;
   border-radius: 99px;
   border: 1px solid var(--border);
   background: var(--surface2);
@@ -1425,7 +1425,7 @@ td select:focus {
 .td-account {
   font-size: 0.82rem;
   color: var(--text2);
-  max-width: 160px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
