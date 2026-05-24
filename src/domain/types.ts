@@ -6,6 +6,7 @@ export type Account = {
   id: string
   name: string
   cardType: CardType
+  closingDay?: number
 }
 
 export type Bill = {

@@ -19,7 +19,7 @@ function workspaceId(q: { workspaceId?: string }) {
   return q.workspaceId || DEFAULT_WORKSPACE
 }
 
-type Account = { id: string; name: string; cardType: string }
+type Account = { id: string; name: string; cardType: string; closingDay?: number }
 type Category = { id: string; name: string; color: string }
 type IncomeSource = { id: string; name: string; recurring: boolean }
 type MonthIncomeEntry = { sourceId: string; value: number }
@@ -62,7 +62,8 @@ fastify.get('/api/bootstrap', async (request) => {
       id: string
       name: string
       card_type: string
-    }>('SELECT id, name, card_type FROM account WHERE workspace_id = $1 ORDER BY name', [ws]),
+      closing_day: number | null
+    }>('SELECT id, name, card_type, closing_day FROM account WHERE workspace_id = $1 ORDER BY name', [ws]),
     pool.query<{ id: string; name: string; color: string }>(
       'SELECT id, name, color FROM category WHERE workspace_id = $1 ORDER BY name',
       [ws],
@@ -129,6 +130,7 @@ fastify.get('/api/bootstrap', async (request) => {
       id: a.id,
       name: a.name,
       cardType: a.card_type,
+      ...(a.closing_day != null ? { closingDay: a.closing_day } : {}),
     })),
     categories: cat.rows.map((c) => ({
       id: c.id,
@@ -162,9 +164,10 @@ fastify.put<{ Body: { accounts?: Account[] }; Querystring: { workspaceId?: strin
       await c.query('BEGIN')
       await c.query('DELETE FROM account WHERE workspace_id = $1', [ws])
       for (const a of accounts) {
+        const cd = a.cardType === 'credito' && a.closingDay && a.closingDay >= 1 && a.closingDay <= 31 ? a.closingDay : null
         await c.query(
-          `INSERT INTO account (id, workspace_id, name, card_type) VALUES ($1,$2,$3,$4)`,
-          [a.id, ws, a.name, a.cardType],
+          `INSERT INTO account (id, workspace_id, name, card_type, closing_day) VALUES ($1,$2,$3,$4,$5)`,
+          [a.id, ws, a.name, a.cardType, cd],
         )
       }
       await c.query('COMMIT')

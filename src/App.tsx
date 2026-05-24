@@ -15,6 +15,7 @@ import { enrichCategoriesFromHistory } from './lib/deduplication'
 import { buildImportProjection } from './lib/importProjection'
 import { parseTransactionsFromText } from './lib/pdfImportFromText'
 import { mkKey } from './storage/keys'
+import { advanceMonthKey } from './lib/monthKeyUtils'
 import {
   appendBillsToMonth,
   clearAllBillsMonths,
@@ -193,8 +194,12 @@ function openEditAccountModal(id: string) {
   session.editingAccountId = id
   const nameInput = document.getElementById('modalEditContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalEditContaCardType') as HTMLSelectElement | null
+  const closingDayWrap = document.getElementById('modalEditContaClosingDayWrap')
+  const closingDayInput = document.getElementById('modalEditContaClosingDay') as HTMLInputElement | null
   if (nameInput) nameInput.value = acc.name
   if (cardSelect) cardSelect.value = acc.cardType
+  if (closingDayWrap) closingDayWrap.style.display = acc.cardType === 'credito' ? '' : 'none'
+  if (closingDayInput) closingDayInput.value = acc.closingDay != null ? String(acc.closingDay) : ''
   document.getElementById('modalEditConta')?.classList.add('modal-visible')
 }
 
@@ -207,15 +212,19 @@ function saveEditAccount() {
   if (!session.editingAccountId) return
   const nameInput = document.getElementById('modalEditContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalEditContaCardType') as HTMLSelectElement | null
+  const closingDayInput = document.getElementById('modalEditContaClosingDay') as HTMLInputElement | null
   if (!nameInput || !cardSelect) return
   const name = nameInput.value.trim()
   if (!name) {
     showToast('Informe o nome da conta', true)
     return
   }
+  const cardType = cardSelect.value as CardType
+  const cdVal = parseInt(closingDayInput?.value || '', 10)
+  const closingDay = cardType === 'credito' && !isNaN(cdVal) && cdVal >= 1 && cdVal <= 31 ? cdVal : undefined
   const list = getAccounts().map((a) =>
     a.id === session.editingAccountId
-      ? { ...a, name, cardType: cardSelect.value as CardType }
+      ? { ...a, name, cardType, closingDay }
       : a,
   )
   saveAccounts(list)
@@ -497,15 +506,18 @@ function renderContasCadastradas() {
         <tbody>
           ${accounts
             .map(
-              (a) => `
+              (a) => {
+                const closingLabel = a.cardType === 'credito' && a.closingDay ? ` · venc. dia ${a.closingDay}` : ''
+                return `
             <tr>
               <td class="td-name">${esc(a.name)}</td>
-              <td>${esc(getAccountCardType(a.id))}</td>
+              <td>${esc(getAccountCardType(a.id))}${esc(closingLabel)}</td>
               <td class="td-actions">
                 <button type="button" class="btn-ghost-sm btn-edit-acc" data-id="${a.id}">Editar</button>
                 <button type="button" class="btn-icon btn-del-acc" data-id="${a.id}">🗑</button>
               </td>
-            </tr>`,
+            </tr>`
+              },
             )
             .join('')}
         </tbody>
@@ -879,9 +891,13 @@ function openAccountModal() {
   const modal = document.getElementById('modalConta')
   const nameInput = document.getElementById('modalContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalContaCardType') as HTMLSelectElement | null
+  const closingDayWrap = document.getElementById('modalContaClosingDayWrap')
+  const closingDayInput = document.getElementById('modalContaClosingDay') as HTMLInputElement | null
   if (modal) modal.classList.add('modal-visible')
   if (nameInput) nameInput.value = ''
   if (cardSelect) cardSelect.value = 'nenhum'
+  if (closingDayWrap) closingDayWrap.style.display = 'none'
+  if (closingDayInput) closingDayInput.value = ''
   nameInput?.focus()
 }
 
@@ -892,19 +908,19 @@ function closeAccountModal() {
 function saveNewAccount() {
   const nameInput = document.getElementById('modalContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalContaCardType') as HTMLSelectElement | null
+  const closingDayInput = document.getElementById('modalContaClosingDay') as HTMLInputElement | null
   if (!nameInput || !cardSelect) return
   const name = nameInput.value.trim()
   if (!name) {
     showToast('Informe o nome da conta', true)
     return
   }
+  const cardType = cardSelect.value as CardType
+  const cdVal = parseInt(closingDayInput?.value || '', 10)
+  const closingDay = cardType === 'credito' && !isNaN(cdVal) && cdVal >= 1 && cdVal <= 31 ? cdVal : undefined
   const accounts = getAccounts()
   const id = `acc_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-  accounts.push({
-    id,
-    name,
-    cardType: cardSelect.value as CardType,
-  })
+  accounts.push({ id, name, cardType, closingDay })
   saveAccounts(accounts)
   closeAccountModal()
   showToast('✅ Conta cadastrada!')
@@ -943,6 +959,7 @@ function clearLancamentoForm() {
   const docName = document.getElementById('modalLancDocName')
   if (docFile) docFile.value = ''
   if (docName) docName.textContent = ''
+  updateLancamentoModalHint('')
 }
 
 function openEditBillModal(i: number) {
@@ -978,6 +995,31 @@ function renderLancamentoModalCategories() {
   sel.innerHTML = cats.map((c) => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('')
 }
 
+function calcBillTargetMonth(accountId: string): string {
+  const acc = getAccounts().find((a) => a.id === accountId)
+  const today = new Date()
+  const todayKey = mkKey(today.getFullYear(), today.getMonth())
+  if (acc?.cardType === 'credito' && acc.closingDay && session.currentMonth === todayKey) {
+    if (today.getDate() >= acc.closingDay) {
+      return advanceMonthKey(session.currentMonth, 1)
+    }
+  }
+  return session.currentMonth
+}
+
+function updateLancamentoModalHint(accountId: string) {
+  const hint = document.getElementById('modalLancAccountHint') as HTMLElement | null
+  if (!hint) return
+  if (!accountId) { hint.style.display = 'none'; return }
+  const acc = getAccounts().find((a) => a.id === accountId)
+  if (acc?.cardType !== 'credito' || !acc.closingDay) { hint.style.display = 'none'; return }
+  const target = calcBillTargetMonth(accountId)
+  const [y, m] = target.split('_').map(Number)
+  const label = `${MONTHS[m - 1]} ${y}`
+  hint.textContent = `📅 Será salvo em ${label}`
+  hint.style.display = 'block'
+}
+
 function renderLancamentoModalAccounts() {
   const sel = document.getElementById('modalLancAccount') as HTMLSelectElement | null
   if (!sel) return
@@ -986,6 +1028,12 @@ function renderLancamentoModalAccounts() {
     ? '<option value="">Cadastre uma conta antes</option>'
     : '<option value="">Selecione a conta</option>' +
       accounts.map((a) => `<option value="${a.id}">${esc(a.name)} (${getAccountCardType(a.id)})</option>`).join('')
+  sel.removeEventListener('change', onLancAccountChange)
+  sel.addEventListener('change', onLancAccountChange)
+}
+
+function onLancAccountChange(e: Event) {
+  updateLancamentoModalHint((e.target as HTMLSelectElement).value)
 }
 
 function closeLancamentoModal() {
@@ -1019,14 +1067,18 @@ function addBill() {
   const value = parseFloat(valueInput.value) || 0
   const status = statusSelect.value as BillStatus
   const obs = obsInput?.value?.trim() || ''
-  session.currentBills.push({
-    name,
-    category,
-    value,
-    status,
-    obs,
-    accountId: accountId || undefined,
-  })
+  const newBill = { name, category, value, status, obs, accountId: accountId || undefined }
+  const targetMonth = calcBillTargetMonth(accountId)
+  if (targetMonth === session.currentMonth) {
+    session.currentBills.push(newBill)
+    autoSave()
+  } else {
+    const future = readBillsMonth(targetMonth) ?? []
+    future.push(newBill)
+    writeBillsMonth(targetMonth, future)
+    const [y, m] = targetMonth.split('_').map(Number)
+    showToast(`📅 Lançamento salvo em ${MONTHS[m - 1]} ${y} (após fechamento da fatura)`)
+  }
   if (recurringCheck?.checked) {
     const list = getRecurringTemplates()
     const already = list.some((r) => r.name === name && r.category === category)
@@ -1038,10 +1090,8 @@ function addBill() {
   renderBills()
   updateKPIs()
   renderDashCharts()
-  autoSave()
-  showToast('✅ Lançamento adicionado!')
-  clearLancamentoForm()
-  nameInput.focus()
+  if (targetMonth === session.currentMonth) showToast('✅ Lançamento adicionado!')
+  closeLancamentoModal()
 }
 
 function saveEditBill() {

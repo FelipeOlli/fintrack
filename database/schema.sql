@@ -27,9 +27,11 @@ CREATE TABLE IF NOT EXISTS account (
     workspace_id UUID NOT NULL REFERENCES workspace (id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     card_type TEXT NOT NULL CHECK (card_type IN ('nenhum', 'credito', 'debito')),
+    closing_day INTEGER CHECK (closing_day BETWEEN 1 AND 31),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Migration for existing installs: ALTER TABLE account ADD COLUMN IF NOT EXISTS closing_day INTEGER CHECK (closing_day BETWEEN 1 AND 31);
 
 CREATE TABLE IF NOT EXISTS category (
     id TEXT PRIMARY KEY,

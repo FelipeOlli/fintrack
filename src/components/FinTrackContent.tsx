@@ -558,11 +558,18 @@ export function FinTrackContent() {
         </div>
         <div className="modal-field">
           <label htmlFor="modalContaCardType">Tipo de cartão</label>
-          <select id="modalContaCardType">
+          <select id="modalContaCardType" onChange={(e) => {
+            const wrap = document.getElementById('modalContaClosingDayWrap')
+            if (wrap) wrap.style.display = e.target.value === 'credito' ? '' : 'none'
+          }}>
             <option value="nenhum">Nenhum</option>
             <option value="credito">Crédito</option>
             <option value="debito">Débito</option>
           </select>
+        </div>
+        <div className="modal-field" id="modalContaClosingDayWrap" style={{ display: 'none' }}>
+          <label htmlFor="modalContaClosingDay">Dia de vencimento da fatura</label>
+          <input type="number" id="modalContaClosingDay" min={1} max={31} placeholder="Ex: 7" />
         </div>
       </div>
       <div className="modal-footer">
@@ -593,11 +600,18 @@ export function FinTrackContent() {
         </div>
         <div className="modal-field">
           <label htmlFor="modalEditContaCardType">Tipo de cartão</label>
-          <select id="modalEditContaCardType">
+          <select id="modalEditContaCardType" onChange={(e) => {
+            const wrap = document.getElementById('modalEditContaClosingDayWrap')
+            if (wrap) wrap.style.display = e.target.value === 'credito' ? '' : 'none'
+          }}>
             <option value="nenhum">Nenhum</option>
             <option value="credito">Crédito</option>
             <option value="debito">Débito</option>
           </select>
+        </div>
+        <div className="modal-field" id="modalEditContaClosingDayWrap" style={{ display: 'none' }}>
+          <label htmlFor="modalEditContaClosingDay">Dia de vencimento da fatura</label>
+          <input type="number" id="modalEditContaClosingDay" min={1} max={31} placeholder="Ex: 7" />
         </div>
       </div>
       <div className="modal-footer">
@@ -712,6 +726,7 @@ export function FinTrackContent() {
         <div className="modal-field">
           <label htmlFor="modalLancValue">Valor (R$)</label>
           <input type="number" id="modalLancValue" placeholder="0,00" step="0.01" min={0} />
+          <span id="modalLancAccountHint" style={{ fontSize: 12, color: '#f59e0b', marginTop: 4, display: 'none' }} />
         </div>
         <div className="modal-field">
           <label htmlFor="modalLancStatus">Status</label>
