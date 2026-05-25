@@ -724,7 +724,7 @@ export function FinTrackContent() {
           </select>
         </div>
         <div className="modal-field">
-          <label htmlFor="modalLancValue">Valor (R$)</label>
+          <label htmlFor="modalLancValue">Valor da compra (R$)</label>
           <input type="number" id="modalLancValue" placeholder="0,00" step="0.01" min={0} />
           <span id="modalLancAccountHint" style={{ fontSize: 12, color: '#f59e0b', marginTop: 4, display: 'none' }} />
         </div>

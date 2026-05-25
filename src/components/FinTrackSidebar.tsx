@@ -85,19 +85,6 @@ export function FinTrackSidebar() {
         </div>
       </nav>
 
-      <button
-        type="button"
-        className="sidebar-quick-add"
-        onClick={() => {
-          ft.openLancamentoModal()
-        }}
-      >
-        <span className="sidebar-quick-add-icon" aria-hidden>
-          +
-        </span>
-        <span className="sidebar-quick-add-text">Novo lançamento</span>
-      </button>
-
       <div className="sidebar-footer" />
     </aside>
   )
