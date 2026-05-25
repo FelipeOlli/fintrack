@@ -90,6 +90,9 @@ export function FinTrackContent() {
             <div className="kpi-sub" id="kpiDivTotalSub">
               Gastos × Renda
             </div>
+            <div className="kpi-sub" id="kpiDivTotalRenda" style={{ marginTop: 2, opacity: 0.85 }}>
+              Renda: R$ 0
+            </div>
           </div>
         </div>
 

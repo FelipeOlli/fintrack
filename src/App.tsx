@@ -841,6 +841,7 @@ function updateKPIs() {
   setText('kpiDivTotalLabel', tituloOrcamento)
   setText('kpiDivTotal', fmt(t.divRenda))
   setText('kpiDivTotalSub', subtituloOrcamento)
+  setText('kpiDivTotalRenda', `Renda: ${fmt(getTotalMonthIncomeWithFallback(session.currentMonth))}`)
   const kpiDiv = document.getElementById('kpiDivTotal')
   if (kpiDiv) {
     kpiDiv.classList.remove('tone-red', 'tone-green', 'tone-yellow')
