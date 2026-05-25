@@ -729,6 +729,11 @@ export function FinTrackContent() {
           <span id="modalLancAccountHint" style={{ fontSize: 12, color: '#f59e0b', marginTop: 4, display: 'none' }} />
         </div>
         <div className="modal-field">
+          <label htmlFor="modalLancParcelas">Número de parcelas</label>
+          <input type="number" id="modalLancParcelas" min={1} max={48} step={1} defaultValue={1} placeholder="1" />
+          <span id="modalLancParcelasHint" style={{ fontSize: 12, color: '#888', marginTop: 4, display: 'none' }} />
+        </div>
+        <div className="modal-field">
           <label htmlFor="modalLancStatus">Status</label>
           <select id="modalLancStatus">
             <option value="pendente">⏳ Pendente</option>

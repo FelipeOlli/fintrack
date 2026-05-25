@@ -927,6 +927,21 @@ function saveNewAccount() {
   renderLancamentoModalAccounts()
 }
 
+function updateParcelasHint() {
+  const hint = document.getElementById('modalLancParcelasHint')
+  const parcelasInput = document.getElementById('modalLancParcelas') as HTMLInputElement | null
+  const valueInput = document.getElementById('modalLancValue') as HTMLInputElement | null
+  if (!hint) return
+  const parcelas = Math.max(1, parseInt(parcelasInput?.value || '1', 10) || 1)
+  const value = parseFloat(valueInput?.value || '0') || 0
+  if (parcelas <= 1 || value <= 0) { hint.style.display = 'none'; return }
+  const valorParcela = Math.round((value / parcelas) * 100) / 100
+  const targetMonth = calcBillTargetMonth((document.getElementById('modalLancAccount') as HTMLSelectElement | null)?.value || '')
+  const [y, m] = targetMonth.split('_').map(Number)
+  hint.textContent = `💳 ${parcelas}x de R$ ${valorParcela.toFixed(2).replace('.', ',')} — primeira em ${MONTHS[m - 1]}/${y}`
+  hint.style.display = 'block'
+}
+
 function openLancamentoModal() {
   session.editingBillIndex = null
   renderLancamentoModalAccounts()
@@ -936,6 +951,12 @@ function openLancamentoModal() {
   if (titleEl) titleEl.textContent = 'Novo lançamento'
   if (modal) modal.classList.add('modal-visible')
   clearLancamentoForm()
+  const parcelasInput = document.getElementById('modalLancParcelas') as HTMLInputElement | null
+  const valueInput = document.getElementById('modalLancValue') as HTMLInputElement | null
+  parcelasInput?.removeEventListener('input', updateParcelasHint)
+  parcelasInput?.addEventListener('input', updateParcelasHint)
+  valueInput?.removeEventListener('input', updateParcelasHint)
+  valueInput?.addEventListener('input', updateParcelasHint)
   const nameInput = document.getElementById('modalLancName') as HTMLInputElement | null
   nameInput?.focus()
 }
@@ -959,6 +980,10 @@ function clearLancamentoForm() {
   const docName = document.getElementById('modalLancDocName')
   if (docFile) docFile.value = ''
   if (docName) docName.textContent = ''
+  const parcelasInput = document.getElementById('modalLancParcelas') as HTMLInputElement | null
+  const parcelasHint = document.getElementById('modalLancParcelasHint')
+  if (parcelasInput) parcelasInput.value = '1'
+  if (parcelasHint) parcelasHint.style.display = 'none'
   updateLancamentoModalHint('')
 }
 
@@ -1063,34 +1088,70 @@ function addBill() {
     showToast('Informe o nome/descrição', true)
     return
   }
+  const parcelasInput = document.getElementById('modalLancParcelas') as HTMLInputElement | null
+  const parcelas = Math.max(1, parseInt(parcelasInput?.value || '1', 10) || 1)
   const category = catSelect.value
   const value = parseFloat(valueInput.value) || 0
   const status = statusSelect.value as BillStatus
   const obs = obsInput?.value?.trim() || ''
-  const newBill = { name, category, value, status, obs, accountId: accountId || undefined }
   const targetMonth = calcBillTargetMonth(accountId)
-  if (targetMonth === session.currentMonth) {
-    session.currentBills.push(newBill)
-    autoSave()
-  } else {
-    const future = readBillsMonth(targetMonth) ?? []
-    future.push(newBill)
-    writeBillsMonth(targetMonth, future)
-    const [y, m] = targetMonth.split('_').map(Number)
-    showToast(`📅 Lançamento salvo em ${MONTHS[m - 1]} ${y} (após fechamento da fatura)`)
+
+  if (parcelas > 1 && recurringCheck?.checked) {
+    showToast('Parcelas e recorrente são incompatíveis — escolha um', true)
+    return
   }
-  if (recurringCheck?.checked) {
-    const list = getRecurringTemplates()
-    const already = list.some((r) => r.name === name && r.category === category)
-    if (!already) {
-      list.push({ name, category, value, status, accountId: accountId || undefined })
-      saveRecurringTemplates(list)
+
+  if (parcelas <= 1) {
+    const newBill = { name, category, value, status, obs, accountId: accountId || undefined }
+    if (targetMonth === session.currentMonth) {
+      session.currentBills.push(newBill)
+      autoSave()
+    } else {
+      const future = readBillsMonth(targetMonth) ?? []
+      future.push(newBill)
+      writeBillsMonth(targetMonth, future)
+      const [y, m] = targetMonth.split('_').map(Number)
+      showToast(`📅 Lançamento salvo em ${MONTHS[m - 1]} ${y} (após fechamento da fatura)`)
     }
+    if (recurringCheck?.checked) {
+      const list = getRecurringTemplates()
+      const already = list.some((r) => r.name === name && r.category === category)
+      if (!already) {
+        list.push({ name, category, value, status, accountId: accountId || undefined })
+        saveRecurringTemplates(list)
+      }
+    }
+    if (targetMonth === session.currentMonth) showToast('✅ Lançamento adicionado!')
+  } else {
+    const valorParcela = Math.round((value / parcelas) * 100) / 100
+    for (let k = 0; k < parcelas; k++) {
+      const monthKey = advanceMonthKey(targetMonth, k)
+      const isLast = k === parcelas - 1
+      const parcelaValue = isLast ? Math.round((value - valorParcela * (parcelas - 1)) * 100) / 100 : valorParcela
+      const billItem = {
+        name: `${name} · Parc ${k + 1}/${parcelas}`,
+        category,
+        value: parcelaValue,
+        status,
+        obs,
+        accountId: accountId || undefined,
+      }
+      if (monthKey === session.currentMonth) {
+        session.currentBills.push(billItem)
+      } else {
+        const future = readBillsMonth(monthKey) ?? []
+        future.push(billItem)
+        writeBillsMonth(monthKey, future)
+      }
+    }
+    autoSave()
+    const [y, m] = targetMonth.split('_').map(Number)
+    showToast(`✅ ${parcelas}x de R$ ${valorParcela.toFixed(2).replace('.', ',')} registradas a partir de ${MONTHS[m - 1]}/${y}`)
   }
+
   renderBills()
   updateKPIs()
   renderDashCharts()
-  if (targetMonth === session.currentMonth) showToast('✅ Lançamento adicionado!')
   closeLancamentoModal()
 }
 
@@ -1671,7 +1732,7 @@ function navigate(page: string, navEl?: Element | null) {
   const titles: Record<string, [string, string]> = {
     dashboard: ['Dashboard', 'Visão geral do mês'],
     contas: ['Contas do Mês', 'Gerencie seus lançamentos'],
-    'contas-cadastradas': ['Contas cadastradas', 'Métodos de pagamento e cartões'],
+    'contas-cadastradas': ['Contas', 'Métodos de pagamento e cartões'],
     categorias: ['Categorias', 'Controle de categorias de gastos'],
     'fontes-renda': ['Fontes de renda', 'Cadastre fontes e adicione os valores do mês'],
     importar: ['Importar Fatura / Extrato', 'Importe faturas de cartão com projeção de parcelas'],

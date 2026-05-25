@@ -44,7 +44,7 @@ export function FinTrackSidebar() {
           data-nav-page="contas-cadastradas"
           onClick={(e) => ft.navigate('contas-cadastradas', e.currentTarget)}
         >
-          <span className="nav-icon">🏦</span> Contas cadastradas
+          <span className="nav-icon">🏦</span> Contas
         </div>
         <div
           className="nav-item"
