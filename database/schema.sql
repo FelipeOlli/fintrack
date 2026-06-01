@@ -48,9 +48,11 @@ CREATE TABLE IF NOT EXISTS income_source (
     workspace_id UUID NOT NULL REFERENCES workspace (id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     recurring BOOLEAN NOT NULL DEFAULT false,
+    default_value NUMERIC(14, 2),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Migration for existing installs: ALTER TABLE income_source ADD COLUMN IF NOT EXISTS default_value NUMERIC(14,2);
 
 -- Valores de renda por mês (equivalente a income_YYYY_MM no localStorage)
 CREATE TABLE IF NOT EXISTS month_income (

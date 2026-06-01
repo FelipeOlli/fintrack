@@ -669,6 +669,13 @@ export function FinTrackContent() {
         <label className="modal-field modal-field-check">
           <input type="checkbox" id="modalFonteRecurring" /> Fonte recorrente (todo mês)
         </label>
+        <div id="modalFonteDefaultValueWrap" style={{ display: 'none' }}>
+          <div className="modal-field">
+            <label htmlFor="modalFonteDefaultValue">Valor padrão (R$)</label>
+            <input type="number" id="modalFonteDefaultValue" step="0.01" min="0" placeholder="0,00" style={{ width: '140px' }} />
+            <p style={{ color: 'var(--text3)', fontSize: '0.8rem', margin: '4px 0 0' }}>Usado nos meses sem valor específico.</p>
+          </div>
+        </div>
         <div id="modalFonteValoresSection" style={{ display: 'none' }}>
           <div id="modalFonteValoresWrap" />
         </div>

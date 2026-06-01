@@ -21,7 +21,7 @@ function workspaceId(q: { workspaceId?: string }) {
 
 type Account = { id: string; name: string; cardType: string; closingDay?: number }
 type Category = { id: string; name: string; color: string }
-type IncomeSource = { id: string; name: string; recurring: boolean }
+type IncomeSource = { id: string; name: string; recurring: boolean; defaultValue?: number }
 type MonthIncomeEntry = { sourceId: string; value: number }
 type RecurringTemplate = {
   name: string
@@ -43,6 +43,7 @@ const fastify = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
 
 // Auto-migration: garante colunas adicionadas após o schema inicial
 await pool.query(`ALTER TABLE account ADD COLUMN IF NOT EXISTS closing_day INTEGER CHECK (closing_day BETWEEN 1 AND 31)`)
+await pool.query(`ALTER TABLE income_source ADD COLUMN IF NOT EXISTS default_value NUMERIC(14,2)`)
 
 await fastify.register(cors, {
   origin: true,
@@ -75,7 +76,8 @@ fastify.get('/api/bootstrap', async (request) => {
       id: string
       name: string
       recurring: boolean
-    }>('SELECT id, name, recurring FROM income_source WHERE workspace_id = $1 ORDER BY name', [ws]),
+      default_value: number | null
+    }>('SELECT id, name, recurring, default_value FROM income_source WHERE workspace_id = $1 ORDER BY name', [ws]),
     pool.query<{
       name: string
       category: string
@@ -144,6 +146,7 @@ fastify.get('/api/bootstrap', async (request) => {
       id: s.id,
       name: s.name,
       recurring: s.recurring,
+      ...(s.default_value != null ? { defaultValue: Number(s.default_value) } : {}),
     })),
     recurringTemplates: rec.rows.map((r) => ({
       name: r.name,
@@ -229,11 +232,12 @@ fastify.put<{ Body: { sources?: IncomeSource[] }; Querystring: { workspaceId?: s
       // Se sources vier vazio, não faz nada (proteção contra wipe acidental)
       // Upsert cada fonte (preserva month_income existente)
       for (const s of sources) {
+        const dv = s.recurring && typeof s.defaultValue === 'number' && s.defaultValue >= 0 ? s.defaultValue : null
         await c.query(
-          `INSERT INTO income_source (id, workspace_id, name, recurring)
-           VALUES ($1,$2,$3,$4)
-           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, recurring = EXCLUDED.recurring`,
-          [s.id, ws, s.name, s.recurring],
+          `INSERT INTO income_source (id, workspace_id, name, recurring, default_value)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, recurring = EXCLUDED.recurring, default_value = EXCLUDED.default_value`,
+          [s.id, ws, s.name, s.recurring, dv],
         )
       }
       await c.query('COMMIT')

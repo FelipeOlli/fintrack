@@ -185,10 +185,10 @@ export function getTotalMonthIncome(monthKey: string): number {
   return getMonthIncome(monthKey).reduce((s, e) => s + e.value, 0)
 }
 
-/** Total considerando fallback de fontes recorrentes sem valor no mês. */
+/** Total considerando defaultValue de fontes recorrentes sem valor explícito no mês. */
 export function getTotalMonthIncomeWithFallback(monthKey: string): number {
   const sources = getIncomeSources()
-  return sources.reduce((sum, s) => sum + getValorFonteComFallback(monthKey, s.id, s.recurring), 0)
+  return sources.reduce((sum, s) => sum + getValorFonteComFallback(monthKey, s), 0)
 }
 
 export function getRecurringTemplates(): RecurringTemplate[] {
@@ -360,39 +360,18 @@ export function getValorUnicoFonte(monthKey: string, sourceId: string): number {
 
 /**
  * Retorna o valor da fonte para o mês.
- * Se não houver valor explícito e a fonte for recorrente,
- * busca o último valor salvo em meses anteriores.
+ * Se não houver valor explícito e a fonte for recorrente com defaultValue, usa o padrão.
  */
 export function getValorFonteComFallback(
   monthKey: string,
-  sourceId: string,
-  recurring: boolean,
+  source: Pick<import('../domain/types').IncomeSource, 'id' | 'recurring' | 'defaultValue'>,
 ): number {
-  const explicit = getValorUnicoFonte(monthKey, sourceId)
+  const explicit = getValorUnicoFonte(monthKey, source.id)
   if (explicit > 0) return explicit
-  if (!recurring) return 0
-
-  // Busca em meses anteriores (ordem decrescente)
-  const pastMonthKeys = listPastMonthKeys(monthKey)
-  for (const mk of pastMonthKeys) {
-    const v = getValorUnicoFonte(mk, sourceId)
-    if (v > 0) return v
-  }
+  if (source.recurring && source.defaultValue != null) return source.defaultValue
   return 0
 }
 
-/** Lista chaves de mês com income salvo, antes de monthKey, em ordem decrescente. */
-function listPastMonthKeys(beforeMonthKey: string): string[] {
-  let keys: string[]
-  if (!persistenceUsesApi()) {
-    keys = Object.keys(localStorage)
-      .filter((k) => k.startsWith('income_'))
-      .map((k) => k.slice('income_'.length))
-  } else {
-    keys = Object.keys(needCache().monthIncome)
-  }
-  return keys.filter((k) => k < beforeMonthKey).sort().reverse()
-}
 
 export function setValorUnicoFonte(monthKey: string, sourceId: string, value: number): void {
   const list = getMonthIncome(monthKey).filter((e) => e.sourceId !== sourceId)

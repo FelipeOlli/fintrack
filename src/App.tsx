@@ -387,12 +387,13 @@ function renderFontesRendaPage() {
         <tbody>
           ${sources
             .map((s) => {
-              const valorUnico = getValorFonteComFallback(session.currentMonth, s.id, s.recurring)
+              const valorUnico = getValorFonteComFallback(session.currentMonth, s)
               const valoresDisplay = valorUnico > 0 ? fmt(valorUnico) : '—'
+              const defaultTag = s.recurring && s.defaultValue != null ? ` <span style="font-size:0.75rem;color:var(--text3)">(padrão: ${fmt(s.defaultValue)})</span>` : ''
               return `
             <tr>
               <td class="td-name">${esc(s.name)}</td>
-              <td>${s.recurring ? '🔄 Sim' : '— Não'}</td>
+              <td>${s.recurring ? `🔄 Sim${defaultTag}` : '— Não'}</td>
               <td class="td-valores" style="font-weight:600;color:var(--text)">${valoresDisplay}</td>
               <td class="td-actions">
                 <button type="button" class="btn-ghost-sm btn-edit-fonte" data-id="${s.id}" title="Editar fonte e valor">Editar</button>
@@ -423,18 +424,49 @@ function renderModalFonteValores(fonteId: string) {
   const source = getIncomeSources().find((s) => s.id === fonteId)
   const recurring = source?.recurring ?? false
   const explicitValue = getValorUnicoFonte(session.currentMonth, fonteId)
-  const valorUnico = getValorFonteComFallback(session.currentMonth, fonteId, recurring)
-  const isFallback = recurring && explicitValue === 0 && valorUnico > 0
-  const hint = isFallback
-    ? `<p style="color:var(--text3);font-size:0.8rem;margin:6px 0 0">🔄 Valor herdado do mês anterior. Salve para fixar neste mês.</p>`
+  const isUsingDefault = recurring && explicitValue === 0 && (source?.defaultValue ?? 0) > 0
+  const hint = isUsingDefault
+    ? `<p style="color:var(--text3);font-size:0.8rem;margin:6px 0 0">💰 Usando valor padrão R$ ${fmt(source!.defaultValue!)}. Salve para registrar um valor específico neste mês.</p>`
     : `<p style="color:var(--text3);font-size:0.8rem;margin:6px 0 0">Um único valor por fonte no mês. Salve para aplicar.</p>`
+  const btnPadrao = recurring
+    ? `<button type="button" id="btnDefinirPadrao" class="btn btn-outline" style="margin-top:8px;font-size:0.85rem">Definir como novo valor padrão</button>`
+    : ''
   wrap.innerHTML = `
     <div class="modal-field" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
       <label htmlFor="modalFonteValorInput">Valor no mês (R$)</label>
-      <input type="number" id="modalFonteValorInput" step="0.01" min="0" placeholder="0,00" value="${valorUnico > 0 ? valorUnico : ''}" style="width:140px" />
+      <input type="number" id="modalFonteValorInput" step="0.01" min="0" placeholder="0,00" value="${explicitValue > 0 ? explicitValue : ''}" style="width:140px" />
       ${hint}
+      ${btnPadrao}
     </div>
   `
+  if (recurring) {
+    document.getElementById('btnDefinirPadrao')?.addEventListener('click', () => definirValorPadrao(fonteId))
+  }
+}
+
+function definirValorPadrao(fonteId: string) {
+  const valorInput = document.getElementById('modalFonteValorInput') as HTMLInputElement | null
+  const value = parseFloat(valorInput?.value || '0') || 0
+  if (value <= 0) {
+    showToast('Informe um valor maior que zero', true)
+    return
+  }
+  const list = getIncomeSources()
+  const idx = list.findIndex((x) => x.id === fonteId)
+  if (idx < 0) return
+  list[idx] = { ...list[idx], defaultValue: value }
+  saveIncomeSources(list)
+  setValorUnicoFonte(session.currentMonth, fonteId, 0)
+  updateKPIs()
+  renderDashCharts()
+  renderModalFonteValores(fonteId)
+  renderFontesRendaPage()
+  showToast('Valor padrão atualizado!')
+}
+
+function toggleDefaultValueWrap(show: boolean) {
+  const wrap = document.getElementById('modalFonteDefaultValueWrap')
+  if (wrap) wrap.style.display = show ? '' : 'none'
 }
 
 function openFonteModal() {
@@ -443,11 +475,17 @@ function openFonteModal() {
   const modal = document.getElementById('modalFonte')
   const nameInput = document.getElementById('modalFonteName') as HTMLInputElement | null
   const recCheck = document.getElementById('modalFonteRecurring') as HTMLInputElement | null
+  const defaultInput = document.getElementById('modalFonteDefaultValue') as HTMLInputElement | null
   const valoresSection = document.getElementById('modalFonteValoresSection')
   if (valoresSection) valoresSection.style.display = 'none'
   if (modal) modal.classList.add('modal-visible')
   if (nameInput) nameInput.value = ''
-  if (recCheck) recCheck.checked = false
+  if (recCheck) {
+    recCheck.checked = false
+    recCheck.onchange = () => toggleDefaultValueWrap(recCheck.checked)
+  }
+  if (defaultInput) defaultInput.value = ''
+  toggleDefaultValueWrap(false)
   nameInput?.focus()
 }
 
@@ -463,8 +501,14 @@ function openEditFonteModal(id: string) {
   setText('modalFonteTitle', 'Editar fonte')
   const nameInput = document.getElementById('modalFonteName') as HTMLInputElement | null
   const recCheck = document.getElementById('modalFonteRecurring') as HTMLInputElement | null
+  const defaultInput = document.getElementById('modalFonteDefaultValue') as HTMLInputElement | null
   if (nameInput) nameInput.value = s.name
-  if (recCheck) recCheck.checked = s.recurring
+  if (recCheck) {
+    recCheck.checked = s.recurring
+    recCheck.onchange = () => toggleDefaultValueWrap(recCheck.checked)
+  }
+  if (defaultInput) defaultInput.value = s.defaultValue != null ? String(s.defaultValue) : ''
+  toggleDefaultValueWrap(s.recurring)
   const valoresSection = document.getElementById('modalFonteValoresSection')
   if (valoresSection) valoresSection.style.display = 'block'
   document.getElementById('modalFonte')?.classList.add('modal-visible')
@@ -481,11 +525,14 @@ function saveFonte() {
     return
   }
   const recurring = recCheck?.checked ?? false
+  const defaultInput = document.getElementById('modalFonteDefaultValue') as HTMLInputElement | null
+  const dvRaw = parseFloat(defaultInput?.value || '')
+  const defaultValue = recurring && !isNaN(dvRaw) && dvRaw >= 0 ? dvRaw : undefined
   const list = getIncomeSources()
   if (session.editingFonteId) {
     const idx = list.findIndex((x) => x.id === session.editingFonteId)
     if (idx >= 0) {
-      list[idx] = { ...list[idx], name, recurring }
+      list[idx] = { ...list[idx], name, recurring, defaultValue }
       saveIncomeSources(list)
     }
     const valorInput = document.getElementById('modalFonteValorInput') as HTMLInputElement | null
@@ -494,7 +541,7 @@ function saveFonte() {
     updateKPIs()
     renderDashCharts()
   } else {
-    list.push({ id: `fonte_${Date.now()}`, name, recurring })
+    list.push({ id: `fonte_${Date.now()}`, name, recurring, defaultValue })
     saveIncomeSources(list)
   }
   const wasEditFonte = Boolean(session.editingFonteId)
@@ -508,6 +555,7 @@ function toggleFonteRecurring(id: string) {
   const s = list.find((x) => x.id === id)
   if (!s) return
   s.recurring = !s.recurring
+  if (!s.recurring) s.defaultValue = undefined
   saveIncomeSources(list)
   renderFontesRendaPage()
   showToast(s.recurring ? 'Fonte marcada como recorrente' : 'Recorrência desmarcada')

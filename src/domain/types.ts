@@ -28,7 +28,7 @@ export type RecurringTemplate = {
 
 export type Category = { id: string; name: string; color: string }
 
-export type IncomeSource = { id: string; name: string; recurring: boolean }
+export type IncomeSource = { id: string; name: string; recurring: boolean; defaultValue?: number }
 
 export type MonthIncomeEntry = { sourceId: string; value: number }
 
