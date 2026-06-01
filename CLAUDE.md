@@ -127,5 +127,5 @@ Backend (`server/.env`):
 
 ## Sessões recentes
 
-- **2026-05-04**: Melhorias na deduplicação de importação: badge âmbar para borderline, comparação insensível a espaço/caixa, similares com valor igual não marcados como duplicata. Propagação de conta/cartão para todos os meses ao editar lançamento recorrente. Proteção contra wipe acidental de fontes de renda e valores mensais.
 - **2026-05-22**: Esclarecimento sobre navegação por mês (sem mudança de código). Documentado comportamento: mês corrente sempre ao abrir, mês selecionado no topo ao criar lançamento — decisão deliberada mantida.
+- **2026-06-01**: Renomeação de "dia de vencimento" para "dia de fechamento" na aba Contas (coluna própria na tabela, labels dos modais, regra de corte ajustada para `today > closingDay`). Lançamentos inteligentes por mês: crédito com closingDay sempre calcula target a partir de hoje; débito/nenhum exibe diálogo de confirmação ao lançar em mês diferente do atual. Importação via IA sempre gera status `pendente`.
