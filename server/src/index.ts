@@ -41,6 +41,9 @@ type Bill = {
 
 const fastify = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
 
+// Auto-migration: garante colunas adicionadas após o schema inicial
+await pool.query(`ALTER TABLE account ADD COLUMN IF NOT EXISTS closing_day INTEGER CHECK (closing_day BETWEEN 1 AND 31)`)
+
 await fastify.register(cors, {
   origin: true,
   methods: ['GET', 'PUT', 'POST', 'DELETE', 'OPTIONS'],
