@@ -245,7 +245,10 @@ export function saveAccounts(accounts: Account[]): void {
     return
   }
   needCache().accounts = accounts
-  void apiPut('api/accounts', { accounts })
+  apiPut('api/accounts', { accounts }).catch((e) => {
+    console.error('[saveAccounts]', e)
+    alert('Erro ao salvar contas: ' + String(e))
+  })
 }
 
 export function readBillsMonth(monthKey: string): Bill[] | null {
