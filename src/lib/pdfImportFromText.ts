@@ -88,7 +88,7 @@ export function parseTransactionsFromText(text: string): ExtractedItem[] {
         name: desc,
         value: val,
         category: cat,
-        status: 'pago' as BillStatus,
+        status: 'pendente' as BillStatus,
         selected: true,
         ...(inst && {
           installmentCurrent: inst.current,
