@@ -139,6 +139,39 @@ function showConfirm(msg: string): Promise<boolean> {
   })
 }
 
+function showMonthConfirm(selectedKey: string, todayKey: string): Promise<'selected' | 'today' | 'cancel'> {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('modalConfirmMonth')
+    const keepBtn = document.getElementById('modalConfirmMonthKeep')
+    const todayBtn = document.getElementById('modalConfirmMonthToday')
+    const cancelBtn = document.getElementById('modalConfirmMonthCancel')
+    const backdrop = document.getElementById('modalConfirmMonthBackdrop')
+    const keepLabel = document.getElementById('modalConfirmMonthKeepLabel')
+    const todayLabel = document.getElementById('modalConfirmMonthTodayLabel')
+    if (!modal || !keepBtn || !todayBtn || !cancelBtn) { resolve('cancel'); return }
+    const [sy, sm] = selectedKey.split('_').map(Number)
+    const [ty, tm] = todayKey.split('_').map(Number)
+    if (keepLabel) keepLabel.textContent = `${MONTHS[sm - 1]} ${sy}`
+    if (todayLabel) todayLabel.textContent = `${MONTHS[tm - 1]} ${ty}`
+    modal.classList.add('modal-visible')
+    const close = (result: 'selected' | 'today' | 'cancel') => {
+      modal.classList.remove('modal-visible')
+      keepBtn.removeEventListener('click', onKeep)
+      todayBtn.removeEventListener('click', onToday)
+      cancelBtn.removeEventListener('click', onCancel)
+      backdrop?.removeEventListener('click', onCancel)
+      resolve(result)
+    }
+    const onKeep = () => close('selected')
+    const onToday = () => close('today')
+    const onCancel = () => close('cancel')
+    keepBtn.addEventListener('click', onKeep)
+    todayBtn.addEventListener('click', onToday)
+    cancelBtn.addEventListener('click', onCancel)
+    backdrop?.addEventListener('click', onCancel)
+  })
+}
+
 async function descontinuarRecurrente(name: string, category: string) {
   const ok = await showConfirm(`Descontinuar conta recorrente "${name}"? Ela não aparecerá nos próximos meses, mas os meses já salvos permanecem.`)
   if (!ok) return
@@ -1026,10 +1059,8 @@ function calcBillTargetMonth(accountId: string): string {
   const acc = getAccounts().find((a) => a.id === accountId)
   const today = new Date()
   const todayKey = mkKey(today.getFullYear(), today.getMonth())
-  if (acc?.cardType === 'credito' && acc.closingDay && session.currentMonth === todayKey) {
-    if (today.getDate() > acc.closingDay) {
-      return advanceMonthKey(session.currentMonth, 1)
-    }
+  if (acc?.cardType === 'credito' && acc.closingDay) {
+    return today.getDate() > acc.closingDay ? advanceMonthKey(todayKey, 1) : todayKey
   }
   return session.currentMonth
 }
@@ -1037,14 +1068,23 @@ function calcBillTargetMonth(accountId: string): string {
 function updateLancamentoModalHint(accountId: string) {
   const hint = document.getElementById('modalLancAccountHint') as HTMLElement | null
   if (!hint) return
-  if (!accountId) { hint.style.display = 'none'; return }
-  const acc = getAccounts().find((a) => a.id === accountId)
-  if (acc?.cardType !== 'credito' || !acc.closingDay) { hint.style.display = 'none'; return }
-  const target = calcBillTargetMonth(accountId)
-  const [y, m] = target.split('_').map(Number)
-  const label = `${MONTHS[m - 1]} ${y}`
-  hint.textContent = `📅 Será salvo em ${label}`
-  hint.style.display = 'block'
+  const today = new Date()
+  const todayKey = mkKey(today.getFullYear(), today.getMonth())
+  const acc = accountId ? getAccounts().find((a) => a.id === accountId) : undefined
+  if (acc?.cardType === 'credito' && acc.closingDay) {
+    const target = calcBillTargetMonth(accountId)
+    const [y, m] = target.split('_').map(Number)
+    hint.textContent = `📅 Será salvo em ${MONTHS[m - 1]} ${y}`
+    hint.style.display = 'block'
+    return
+  }
+  if (session.currentMonth !== todayKey) {
+    const [y, m] = session.currentMonth.split('_').map(Number)
+    hint.textContent = `⚠️ Mês selecionado: ${MONTHS[m - 1]} ${y}`
+    hint.style.display = 'block'
+    return
+  }
+  hint.style.display = 'none'
 }
 
 function renderLancamentoModalAccounts() {
@@ -1067,15 +1107,15 @@ function closeLancamentoModal() {
   document.getElementById('modalLancamento')?.classList.remove('modal-visible')
 }
 
-function saveLancamentoModal() {
+async function saveLancamentoModal() {
   if (session.editingBillIndex !== null) {
     saveEditBill()
     return
   }
-  addBill()
+  await addBill()
 }
 
-function addBill() {
+async function addBill() {
   const accountSelect = document.getElementById('modalLancAccount') as HTMLSelectElement | null
   const nameInput = document.getElementById('modalLancName') as HTMLInputElement | null
   const valueInput = document.getElementById('modalLancValue') as HTMLInputElement | null
@@ -1096,61 +1136,76 @@ function addBill() {
   const value = parseFloat(valueInput.value) || 0
   const status = statusSelect.value as BillStatus
   const obs = obsInput?.value?.trim() || ''
-  const targetMonth = calcBillTargetMonth(accountId)
 
   if (parcelas > 1 && recurringCheck?.checked) {
     showToast('Parcelas e recorrente são incompatíveis — escolha um', true)
     return
   }
 
-  if (parcelas <= 1) {
-    const newBill = { name, category, value, status, obs, accountId: accountId || undefined }
-    if (targetMonth === session.currentMonth) {
-      session.currentBills.push(newBill)
-      autoSave()
-    } else {
-      const future = readBillsMonth(targetMonth) ?? []
-      future.push(newBill)
-      writeBillsMonth(targetMonth, future)
-      const [y, m] = targetMonth.split('_').map(Number)
-      showToast(`📅 Lançamento salvo em ${MONTHS[m - 1]} ${y} (após fechamento da fatura)`)
+  let targetMonth = calcBillTargetMonth(accountId)
+
+  const acc = accountId ? getAccounts().find((a) => a.id === accountId) : undefined
+  const isCreditWithClosing = acc?.cardType === 'credito' && acc.closingDay
+  if (!isCreditWithClosing) {
+    const todayKey = mkKey(new Date().getFullYear(), new Date().getMonth())
+    if (session.currentMonth !== todayKey) {
+      const choice = await showMonthConfirm(session.currentMonth, todayKey)
+      if (choice === 'cancel') return
+      if (choice === 'today') targetMonth = todayKey
     }
-    if (recurringCheck?.checked) {
-      const list = getRecurringTemplates()
-      const already = list.some((r) => r.name === name && r.category === category)
-      if (!already) {
-        list.push({ name, category, value, status, accountId: accountId || undefined })
-        saveRecurringTemplates(list)
-      }
-    }
-    if (targetMonth === session.currentMonth) showToast('✅ Lançamento adicionado!')
-  } else {
-    const valorParcela = Math.round((value / parcelas) * 100) / 100
-    for (let k = 0; k < parcelas; k++) {
-      const monthKey = advanceMonthKey(targetMonth, k)
-      const isLast = k === parcelas - 1
-      const parcelaValue = isLast ? Math.round((value - valorParcela * (parcelas - 1)) * 100) / 100 : valorParcela
-      const billItem = {
-        name: `${name} · Parc ${k + 1}/${parcelas}`,
-        category,
-        value: parcelaValue,
-        status,
-        obs,
-        accountId: accountId || undefined,
-      }
-      if (monthKey === session.currentMonth) {
-        session.currentBills.push(billItem)
-      } else {
-        const future = readBillsMonth(monthKey) ?? []
-        future.push(billItem)
-        writeBillsMonth(monthKey, future)
-      }
-    }
-    autoSave()
-    const [y, m] = targetMonth.split('_').map(Number)
-    showToast(`✅ ${parcelas}x de R$ ${valorParcela.toFixed(2).replace('.', ',')} registradas a partir de ${MONTHS[m - 1]}/${y}`)
   }
 
+  const commitBill = (tMonth: string) => {
+    if (parcelas <= 1) {
+      const newBill = { name, category, value, status, obs, accountId: accountId || undefined }
+      if (tMonth === session.currentMonth) {
+        session.currentBills.push(newBill)
+        autoSave()
+        showToast('✅ Lançamento adicionado!')
+      } else {
+        const future = readBillsMonth(tMonth) ?? []
+        future.push(newBill)
+        writeBillsMonth(tMonth, future)
+        const [y, m] = tMonth.split('_').map(Number)
+        showToast(`📅 Lançamento salvo em ${MONTHS[m - 1]} ${y}`)
+      }
+      if (recurringCheck?.checked) {
+        const list = getRecurringTemplates()
+        const already = list.some((r) => r.name === name && r.category === category)
+        if (!already) {
+          list.push({ name, category, value, status, accountId: accountId || undefined })
+          saveRecurringTemplates(list)
+        }
+      }
+    } else {
+      const valorParcela = Math.round((value / parcelas) * 100) / 100
+      for (let k = 0; k < parcelas; k++) {
+        const monthKey = advanceMonthKey(tMonth, k)
+        const isLast = k === parcelas - 1
+        const parcelaValue = isLast ? Math.round((value - valorParcela * (parcelas - 1)) * 100) / 100 : valorParcela
+        const billItem = {
+          name: `${name} · Parc ${k + 1}/${parcelas}`,
+          category,
+          value: parcelaValue,
+          status,
+          obs,
+          accountId: accountId || undefined,
+        }
+        if (monthKey === session.currentMonth) {
+          session.currentBills.push(billItem)
+        } else {
+          const future = readBillsMonth(monthKey) ?? []
+          future.push(billItem)
+          writeBillsMonth(monthKey, future)
+        }
+      }
+      autoSave()
+      const [y, m] = tMonth.split('_').map(Number)
+      showToast(`✅ ${parcelas}x de R$ ${valorParcela.toFixed(2).replace('.', ',')} registradas a partir de ${MONTHS[m - 1]}/${y}`)
+    }
+  }
+
+  commitBill(targetMonth)
   renderBills()
   updateKPIs()
   renderDashCharts()

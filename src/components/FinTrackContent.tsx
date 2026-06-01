@@ -785,6 +785,32 @@ export function FinTrackContent() {
         </div>
       </div>
 
+      {/* Modal de confirmação de mês */}
+      <div id="modalConfirmMonth" className="modal" role="dialog">
+        <div className="modal-backdrop" id="modalConfirmMonthBackdrop" />
+        <div className="modal-box" style={{ maxWidth: 420 }}>
+          <div className="modal-header">
+            <h3>Mês diferente do atual</h3>
+          </div>
+          <div className="modal-body">
+            <p style={{ fontSize: '0.95rem', lineHeight: 1.5 }}>
+              O mês selecionado na barra lateral é diferente do mês atual. Onde deseja salvar?
+            </p>
+          </div>
+          <div className="modal-footer" style={{ flexDirection: 'column', gap: 8 }}>
+            <button type="button" className="btn btn-primary" id="modalConfirmMonthToday" style={{ width: '100%' }}>
+              Salvar em <strong id="modalConfirmMonthTodayLabel">mês atual</strong> (recomendado)
+            </button>
+            <button type="button" className="btn btn-outline" id="modalConfirmMonthKeep" style={{ width: '100%' }}>
+              Salvar mesmo assim em <strong id="modalConfirmMonthKeepLabel">mês selecionado</strong>
+            </button>
+            <button type="button" className="btn btn-ghost" id="modalConfirmMonthCancel" style={{ width: '100%' }}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Modal de confirmação genérico */}
       <div id="modalConfirm" className="modal" role="dialog">
         <div className="modal-backdrop" id="modalConfirmBackdrop" />
