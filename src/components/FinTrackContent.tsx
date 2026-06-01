@@ -571,8 +571,8 @@ export function FinTrackContent() {
           </select>
         </div>
         <div className="modal-field" id="modalContaClosingDayWrap" style={{ display: 'none' }}>
-          <label htmlFor="modalContaClosingDay">Dia de vencimento da fatura</label>
-          <input type="number" id="modalContaClosingDay" min={1} max={31} placeholder="Ex: 7" />
+          <label htmlFor="modalContaClosingDay">Dia de fechamento da fatura</label>
+          <input type="number" id="modalContaClosingDay" min={1} max={31} placeholder="Ex: 25" />
         </div>
       </div>
       <div className="modal-footer">
@@ -613,8 +613,8 @@ export function FinTrackContent() {
           </select>
         </div>
         <div className="modal-field" id="modalEditContaClosingDayWrap" style={{ display: 'none' }}>
-          <label htmlFor="modalEditContaClosingDay">Dia de vencimento da fatura</label>
-          <input type="number" id="modalEditContaClosingDay" min={1} max={31} placeholder="Ex: 7" />
+          <label htmlFor="modalEditContaClosingDay">Dia de fechamento da fatura</label>
+          <input type="number" id="modalEditContaClosingDay" min={1} max={31} placeholder="Ex: 25" />
         </div>
       </div>
       <div className="modal-footer">

@@ -502,16 +502,17 @@ function renderContasCadastradas() {
   wrap.innerHTML = `
     <div class="contas-cadastradas-table-wrap">
       <table>
-        <thead><tr><th>Nome</th><th>Tipo de cartão</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Tipo de cartão</th><th>Dia de fechamento</th><th>Ações</th></tr></thead>
         <tbody>
           ${accounts
             .map(
               (a) => {
-                const closingLabel = a.cardType === 'credito' && a.closingDay ? ` · venc. dia ${a.closingDay}` : ''
+                const closingDayCell = a.cardType === 'credito' && a.closingDay ? `Dia ${a.closingDay}` : '—'
                 return `
             <tr>
               <td class="td-name">${esc(a.name)}</td>
-              <td>${esc(getAccountCardType(a.id))}${esc(closingLabel)}</td>
+              <td>${esc(getAccountCardType(a.id))}</td>
+              <td>${esc(closingDayCell)}</td>
               <td class="td-actions">
                 <button type="button" class="btn-ghost-sm btn-edit-acc" data-id="${a.id}">Editar</button>
                 <button type="button" class="btn-icon btn-del-acc" data-id="${a.id}">🗑</button>
@@ -1026,7 +1027,7 @@ function calcBillTargetMonth(accountId: string): string {
   const today = new Date()
   const todayKey = mkKey(today.getFullYear(), today.getMonth())
   if (acc?.cardType === 'credito' && acc.closingDay && session.currentMonth === todayKey) {
-    if (today.getDate() >= acc.closingDay) {
+    if (today.getDate() > acc.closingDay) {
       return advanceMonthKey(session.currentMonth, 1)
     }
   }
