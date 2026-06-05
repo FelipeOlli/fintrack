@@ -1525,7 +1525,16 @@ td select:focus {
   }
 
   .topbar-title {
-    font-size: 1.1rem;
+    font-size: 1rem;
+  }
+
+  .btn-magik-import .btn-label {
+    display: none;
+  }
+
+  .btn-magik-import {
+    padding: 8px 11px;
+    min-width: 36px;
   }
 }
 
@@ -1969,16 +1978,60 @@ body {
 }
 
 @media (max-width: 720px) {
+  .topbar--magik {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+
+  .topbar--magik .hamburger {
+    order: 0;
+    flex: 0 0 auto;
+  }
+
+  .topbar--magik .topbar-titles {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .topbar--magik .topbar-title {
+    font-size: 1.05rem;
+  }
+
+  .topbar--magik .topbar-sub {
+    font-size: 0.72rem;
+  }
+
   .topbar--magik .topbar-toolbar {
-    width: 100%;
+    order: 2;
+    width: auto;
+    flex: 0 0 auto;
+    margin-left: auto;
+    gap: 6px;
     justify-content: flex-end;
-    margin-left: 0;
   }
 
   .topbar--magik .topbar-search-wrap {
+    order: 3;
     flex: 1 1 100%;
     max-width: none;
-    order: 3;
+  }
+
+  .topbar-icon-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
+  }
+
+  .topbar-avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 0.75rem;
+  }
+
+  .btn-magik-import {
+    padding: 7px 12px;
+    font-size: 0.82rem;
   }
 }
 

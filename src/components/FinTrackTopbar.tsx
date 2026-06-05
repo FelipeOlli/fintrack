@@ -44,7 +44,7 @@ export function FinTrackTopbar() {
           type="button"
           onClick={ft.openLancamentoModal}
         >
-          + Lançamento
+          +<span className="btn-label"> Lançamento</span>
         </button>
         <div className="topbar-avatar" title="Conta local">
           FT
