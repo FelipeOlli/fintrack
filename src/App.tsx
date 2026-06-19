@@ -1108,7 +1108,10 @@ function calcBillTargetMonth(accountId: string): string {
   const today = new Date()
   const todayKey = mkKey(today.getFullYear(), today.getMonth())
   if (acc?.cardType === 'credito' && acc.closingDay) {
-    return today.getDate() > acc.closingDay ? advanceMonthKey(todayKey, 1) : todayKey
+    // Ciclo pertence ao mês em que está correndo.
+    // Após o fechamento → gasto entra no mês atual (ciclo já aberto).
+    // Antes/no fechamento → ainda é o ciclo do mês anterior.
+    return today.getDate() > acc.closingDay ? todayKey : advanceMonthKey(todayKey, -1)
   }
   return session.currentMonth
 }
