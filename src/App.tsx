@@ -15,7 +15,7 @@ import { enrichCategoriesFromHistory } from './lib/deduplication'
 import { buildImportProjection } from './lib/importProjection'
 import { parseTransactionsFromText } from './lib/pdfImportFromText'
 import { mkKey } from './storage/keys'
-import { advanceMonthKey } from './lib/monthKeyUtils'
+import { advanceMonthKey, creditCardTargetMonth } from './lib/monthKeyUtils'
 import {
   appendBillsToMonth,
   clearAllBillsMonths,
@@ -1108,10 +1108,7 @@ function calcBillTargetMonth(accountId: string): string {
   const today = new Date()
   const todayKey = mkKey(today.getFullYear(), today.getMonth())
   if (acc?.cardType === 'credito' && acc.closingDay) {
-    // Ciclo pertence ao mês em que está correndo.
-    // Após o fechamento → gasto entra no mês atual (ciclo já aberto).
-    // Antes/no fechamento → ainda é o ciclo do mês anterior.
-    return today.getDate() > acc.closingDay ? todayKey : advanceMonthKey(todayKey, -1)
+    return creditCardTargetMonth(todayKey, today.getDate(), acc.closingDay)
   }
   return session.currentMonth
 }
@@ -1176,6 +1173,10 @@ async function addBill() {
   const obsInput = document.getElementById('modalLancObs') as HTMLInputElement | null
   if (!nameInput || !valueInput || !catSelect || !statusSelect) return
   const accountId = accountSelect?.value || ''
+  if (!accountId) {
+    showToast('Selecione uma conta', true)
+    return
+  }
   const name = nameInput.value.trim()
   if (!name) {
     showToast('Informe o nome/descrição', true)

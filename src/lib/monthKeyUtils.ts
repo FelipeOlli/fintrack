@@ -1,5 +1,14 @@
 import { mkKey } from '../storage/keys'
 
+/**
+ * Determina o mês-alvo de um lançamento de cartão de crédito.
+ * O gasto pertence ao mês em que o ciclo está correndo, não ao mês de vencimento.
+ * Ex: fechamento dia 3, compra em 18/06 → ciclo 04/06–03/07 → pertence a Junho.
+ */
+export function creditCardTargetMonth(todayKey: string, dayOfMonth: number, closingDay: number): string {
+  return dayOfMonth > closingDay ? todayKey : advanceMonthKey(todayKey, -1)
+}
+
 /** Avança (ou retrocede) um monthKey por `offset` meses. */
 export function advanceMonthKey(monthKey: string, offset: number): string {
   const [y, m] = monthKey.split('_').map(Number)
