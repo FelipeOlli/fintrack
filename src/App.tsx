@@ -1286,6 +1286,10 @@ function saveEditBill() {
   const status = statusSelect.value as BillStatus
   const obs = obsInput?.value?.trim() || ''
   const accountId = accountSelect?.value || undefined
+  if (!accountId) {
+    showToast('Selecione uma conta', true)
+    return
+  }
   const oldCategory = bill.category
   const wasRec = isRecurring(bill)
   const nowRec = recurringCheck?.checked ?? false
@@ -1647,6 +1651,10 @@ function toggleAllExt(v: boolean) {
 }
 
 function importSelected() {
+  if (!session.importAccountId) {
+    showToast('Selecione uma conta para importar', true)
+    return
+  }
   const sel = session.extractedData.filter((i) => i.selected)
   if (sel.length === 0) {
     showToast('Nenhum item selecionado', true)
@@ -1659,6 +1667,7 @@ function importSelected() {
       value: it.value,
       status: it.status,
       obs: 'Extrato PDF',
+      accountId: session.importAccountId,
     }),
   )
   autoSave()
@@ -1712,6 +1721,10 @@ function formatMonthLabel(monthKey: string): string {
 }
 
 function buildAndShowPreview() {
+  if (!session.importAccountId) {
+    showToast('Selecione uma conta para importar', true)
+    return
+  }
   const sel = session.extractedData.filter((i) => i.selected)
   if (sel.length === 0) {
     showToast('Nenhum item selecionado', true)
@@ -1773,6 +1786,10 @@ function renderImportPreview() {
 }
 
 function importConfirmed() {
+  if (!session.importAccountId) {
+    showToast('Selecione uma conta para importar', true)
+    return
+  }
   const projection = session.importProjection
   const monthKeys = Object.keys(projection)
   let totalImported = 0
@@ -1789,7 +1806,7 @@ function importConfirmed() {
       obs: it.installmentCurrent && it.installmentTotal
         ? `Fatura PDF · Parc ${it.installmentCurrent}/${it.installmentTotal}`
         : 'Fatura PDF',
-      ...(session.importAccountId ? { accountId: session.importAccountId } : {}),
+      accountId: session.importAccountId,
     }))
 
     if (mk === session.currentMonth) {
