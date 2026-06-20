@@ -813,13 +813,17 @@ function autoSave() {
   renderHistory()
 }
 
-function resetAllData() {
+async function resetAllData() {
   if (!confirm('Tem certeza que deseja apagar todos os meses salvos?')) return
 
-  clearAllBillsMonths()
+  try {
+    await clearAllBillsMonths()
+  } catch {
+    showToast('Erro ao limpar dados', true)
+    return
+  }
 
   session.currentBills = []
-  autoSave()
   renderBills()
   updateKPIs()
   renderDashCharts()

@@ -340,7 +340,7 @@ export function listBillsStorageKeysSorted(): string[] {
     .map((k) => `bills_${k}`)
 }
 
-export function clearAllBillsMonths(): void {
+export async function clearAllBillsMonths(): Promise<void> {
   if (!persistenceUsesApi()) {
     Object.keys(localStorage)
       .filter((k) => k.startsWith('bills_'))
@@ -349,7 +349,7 @@ export function clearAllBillsMonths(): void {
   }
   const c = needCache()
   c.billsByMonth = {}
-  void apiDelete('api/bills')
+  await apiDelete('api/bills')
 }
 
 export function getValorUnicoFonte(monthKey: string, sourceId: string): number {
