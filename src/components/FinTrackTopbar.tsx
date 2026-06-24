@@ -35,10 +35,18 @@ export function FinTrackTopbar() {
       </div>
 
       <div className="topbar-toolbar">
-        <button type="button" className="topbar-icon-btn" aria-label="Notificações">
-          <span className="topbar-icon-dot" aria-hidden />
-          🔔
-        </button>
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            className="topbar-icon-btn topbar-notif-btn"
+            aria-label="Notificações"
+            onClick={ft.toggleNotifications}
+          >
+            <span id="notifBadge" className="notif-badge" style={{ display: 'none' }} />
+            🔔
+          </button>
+          <div id="notifPanel" className="notif-panel" style={{ display: 'none' }} />
+        </div>
         <button
           className="btn btn-magik-import"
           type="button"

@@ -47,3 +47,12 @@ export type ExtractedItem = {
 }
 
 export type RecurringValueMode = 'same' | 'zero'
+
+export type AppNotification = {
+  id: string
+  text: string
+  level: number       // 80 | 90 | 100
+  monthKey: string
+  createdAt: number   // Date.now()
+  read: boolean
+}

@@ -1,6 +1,7 @@
 import { CAT_COLORS } from '../constants/categories'
 import type {
   Account,
+  AppNotification,
   Bill,
   Category,
   IncomeSource,
@@ -13,6 +14,8 @@ import {
   CATEGORIES_STORAGE_KEY,
   INCOME_SOURCES_KEY,
   incomeStorageKey,
+  NOTIFICATIONS_KEY,
+  NOTIF_FIRED_KEY,
   RECURRING_STORAGE_KEY,
 } from './keys'
 
@@ -377,4 +380,23 @@ export function setValorUnicoFonte(monthKey: string, sourceId: string, value: nu
   const list = getMonthIncome(monthKey).filter((e) => e.sourceId !== sourceId)
   if (value > 0) list.push({ sourceId, value })
   setMonthIncome(monthKey, list)
+}
+
+// ── Notificações in-app ──────────────────────────────────────────────────────
+
+export function getNotifications(): AppNotification[] {
+  try { return JSON.parse(localStorage.getItem(NOTIFICATIONS_KEY) || '[]') } catch { return [] }
+}
+
+export function saveNotifications(list: AppNotification[]): void {
+  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(list))
+}
+
+/** Mapa { monthKey → maior nível já disparado } para evitar re-disparo no mesmo mês. */
+export function getFiredLevels(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(NOTIF_FIRED_KEY) || '{}') } catch { return {} }
+}
+
+export function saveFiredLevels(map: Record<string, number>): void {
+  localStorage.setItem(NOTIF_FIRED_KEY, JSON.stringify(map))
 }

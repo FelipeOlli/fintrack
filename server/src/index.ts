@@ -512,6 +512,29 @@ Retorne APENAS o JSON, sem markdown, sem explicação.`
   }
 })
 
+// ── Notificações de orçamento via Telegram ──
+fastify.post<{ Body: { text: string } }>('/api/notify-telegram', async (request, reply) => {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  const chatId = process.env.TELEGRAM_CHAT_ID
+  if (!botToken || !chatId) {
+    return reply.status(501).send({ error: 'TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados' })
+  }
+  const { text } = request.body
+  if (!text || typeof text !== 'string') {
+    return reply.status(400).send({ error: 'Campo "text" obrigatório' })
+  }
+  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+  })
+  const data = await res.json() as { ok: boolean }
+  if (!data.ok) {
+    return reply.status(502).send({ error: 'Telegram retornou erro', data })
+  }
+  return { ok: true }
+})
+
 try {
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
 } catch (err) {

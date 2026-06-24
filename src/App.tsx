@@ -8,7 +8,7 @@ import { FinTrackSidebar } from './components/FinTrackSidebar'
 import { FinTrackTopbar } from './components/FinTrackTopbar'
 import { session } from './app/session'
 import { CAT_COLORS, MONTHS } from './constants/categories'
-import type { Bill, BillStatus, CardType, RecurringValueMode } from './domain/types'
+import type { AppNotification, Bill, BillStatus, CardType, RecurringValueMode } from './domain/types'
 import { bumpDash } from './lib/dashboardSync'
 import { esc, fmt, setText } from './lib/format'
 import { enrichCategoriesFromHistory } from './lib/deduplication'
@@ -21,7 +21,9 @@ import {
   clearAllBillsMonths,
   getAccounts,
   getCategories,
+  getFiredLevels,
   getIncomeSources,
+  getNotifications,
   getRecurringBillsAsBills,
   getRecurringTemplates,
   getTotalMonthIncomeWithFallback,
@@ -35,7 +37,9 @@ import {
   readBillsMonth,
   saveAccounts,
   saveCategories,
+  saveFiredLevels,
   saveIncomeSources,
+  saveNotifications,
   saveRecurringTemplates,
   setValorUnicoFonte,
   writeBillsMonth,
@@ -868,6 +872,102 @@ function calcTotals() {
   }
 }
 
+// ── Notificações in-app ──────────────────────────────────────────────────────
+
+function renderNotifications() {
+  const panel = document.getElementById('notifPanel')
+  const badge = document.getElementById('notifBadge')
+  const list = getNotifications().sort((a, b) => b.createdAt - a.createdAt)
+  const unread = list.filter((n) => !n.read).length
+  if (badge) {
+    badge.textContent = unread > 0 ? String(unread) : ''
+    badge.style.display = unread > 0 ? 'flex' : 'none'
+  }
+  if (!panel) return
+  if (list.length === 0) {
+    panel.innerHTML = '<div class="notif-empty">Nenhuma notificação</div>'
+    return
+  }
+  panel.innerHTML =
+    `<div class="notif-header"><span>Notificações</span><button class="notif-clear" onclick="window.__notifClear()">Limpar tudo</button></div>` +
+    list
+      .map(
+        (n) =>
+          `<div class="notif-item${n.read ? ' notif-read' : ''}">
+            <span class="notif-icon">${n.level === 100 ? '🚨' : n.level === 90 ? '⚠️' : '📊'}</span>
+            <div class="notif-body">
+              <div class="notif-text">${esc(n.text)}</div>
+              <div class="notif-time">${new Date(n.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+            </div>
+          </div>`,
+      )
+      .join('')
+}
+
+function toggleNotifications() {
+  const panel = document.getElementById('notifPanel')
+  if (!panel) return
+  const isOpen = panel.style.display !== 'none' && panel.style.display !== ''
+  if (isOpen) {
+    panel.style.display = 'none'
+  } else {
+    panel.style.display = 'block'
+    // Marca todas como lidas ao abrir
+    const list = getNotifications().map((n) => ({ ...n, read: true }))
+    saveNotifications(list)
+    renderNotifications()
+  }
+}
+
+function checkBudgetThresholds(t: ReturnType<typeof calcTotals>) {
+  if (t.renda <= 0) return
+  // Só avalia para o mês atual do calendário
+  const nowKey = mkKey(new Date().getFullYear(), new Date().getMonth())
+  if (session.currentMonth !== nowKey) return
+
+  const pct = (t.total / t.renda) * 100
+  const firedLevels = getFiredLevels()
+  const firedMax = firedLevels[nowKey] ?? 0
+  let changed = false
+
+  for (const th of [80, 90, 100] as const) {
+    if (pct >= th && th > firedMax) {
+      const monthLabel = formatMonthLabel(nowKey)
+      const text = `${th === 100 ? '🚨' : '⚠️'} Gastos atingiram ${th}% da renda em ${monthLabel} (${fmt(t.total)} de ${fmt(t.renda)})`
+      const notif: AppNotification = {
+        id: `${nowKey}-${th}-${Date.now()}`,
+        text,
+        level: th,
+        monthKey: nowKey,
+        createdAt: Date.now(),
+        read: false,
+      }
+      const notifications = getNotifications()
+      notifications.push(notif)
+      saveNotifications(notifications)
+
+      firedLevels[nowKey] = th
+      changed = true
+
+      // Dispara Telegram fire-and-forget (só em modo API)
+      if (persistenceUsesApi()) {
+        const base = import.meta.env.VITE_API_URL || ''
+        const url = base.startsWith('http') ? base : ''
+        void fetch(`${url}/api/notify-telegram`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        }).catch(() => undefined)
+      }
+    }
+  }
+
+  if (changed) {
+    saveFiredLevels(firedLevels)
+    renderNotifications()
+  }
+}
+
 function updateKpiTrendBadges(t: ReturnType<typeof calcTotals>) {
   const setBadge = (id: string, text: string, variant: 'up' | 'down' | 'neutral') => {
     const el = document.getElementById(id)
@@ -943,6 +1043,7 @@ function updateKPIs() {
   setText('c_kpiPend', fmt(t.pend))
   setText('c_kpiDiv', fmt(t.divRenda))
 
+  checkBudgetThresholds(t)
   bumpDash()
 }
 
@@ -2000,6 +2101,7 @@ declare global {
     __extUpdateStatus?: (i: number, status: string) => void
     __importPreviewToggle?: (monthKey: string, idx: number, checked: boolean) => void
     __importAccountChange?: (accountId: string) => void
+    __notifClear?: () => void
   }
 }
 
@@ -2015,6 +2117,7 @@ function App() {
         await initPersistence()
         initMonthSel()
         loadMonth()
+        renderNotifications()
 
         const globalSearchInput = document.getElementById('globalSearch') as HTMLInputElement | null
         if (globalSearchInput) {
@@ -2104,6 +2207,21 @@ function App() {
     window.__importAccountChange = (accountId) => {
       session.importAccountId = accountId
     }
+    window.__notifClear = () => {
+      saveNotifications([])
+      document.getElementById('notifPanel')!.style.display = 'none'
+      renderNotifications()
+    }
+
+    // Fechar painel de notificações ao clicar fora
+    document.addEventListener('click', (e) => {
+      const panel = document.getElementById('notifPanel')
+      const btn = document.querySelector('.topbar-notif-btn')
+      if (!panel || panel.style.display === 'none') return
+      if (!panel.contains(e.target as Node) && !btn?.contains(e.target as Node)) {
+        panel.style.display = 'none'
+      }
+    })
   }, [])
 
   const finTrackApi = useMemo<FinTrackCtx>(
@@ -2131,6 +2249,7 @@ function App() {
       saveFonte,
       closeLancamentoModal,
       saveLancamentoModal,
+      toggleNotifications,
       handlePdf,
       analyzeBillDocument,
       toggleAllExt,
