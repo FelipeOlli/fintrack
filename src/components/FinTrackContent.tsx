@@ -350,8 +350,8 @@ export function FinTrackContent() {
         style={{ display: 'none' }}
       >
         <div className="page-header">
-          <h2>Importar Fatura / Extrato</h2>
-          <p>Importe faturas de cartão com detecção de parcelas e projeção futura</p>
+          <h2>Importar Fatura (PDF ou Foto)</h2>
+          <p>Importe por PDF ou prints da fatura, com detecção de parcelas e projeção futura</p>
         </div>
 
         {/* ── Step 0: Upload ── */}
@@ -374,15 +374,16 @@ export function FinTrackContent() {
           <div className="card" style={{ marginBottom: 20 }}>
             <div className="pdf-drop" id="dropZone">
               <div className="drop-icon">📂</div>
-              <div className="drop-title">Arraste o PDF da fatura aqui</div>
+              <div className="drop-title">Arraste o PDF ou os prints da fatura aqui</div>
               <div className="drop-sub">
-                ou clique para selecionar
+                ou clique para selecionar (PDF, JPG, PNG, WebP)
               </div>
               <input
                 type="file"
                 id="pdfInput"
-                accept=".pdf"
-                onChange={(e) => ft.handlePdf(e.target.files?.[0])}
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                multiple
+                onChange={(e) => ft.handlePdf(e.target.files)}
               />
             </div>
             <div className="processing-bar" id="pdfProc">

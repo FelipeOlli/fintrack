@@ -39,7 +39,7 @@ type Bill = {
   accountId?: string
 }
 
-const fastify = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 })
+const fastify = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 })
 
 // Auto-migration: garante colunas adicionadas após o schema inicial
 await pool.query(`ALTER TABLE account ADD COLUMN IF NOT EXISTS closing_day INTEGER CHECK (closing_day BETWEEN 1 AND 31)`)
@@ -376,31 +376,25 @@ type ParsedInvoiceItem = {
 }
 
 fastify.post<{
-  Body: { text: string; categories: string[] }
+  Body: { text?: string; images?: string[]; mimeType?: string; categories: string[] }
 }>('/api/parse-invoice', async (request, reply) => {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     return reply.status(501).send({ error: 'ANTHROPIC_API_KEY não configurada' })
   }
 
-  const { text, categories } = request.body
-  if (!text || typeof text !== 'string') {
-    return reply.status(400).send({ error: 'Campo "text" obrigatório' })
+  const { text, images, mimeType, categories } = request.body
+  const hasText = text && typeof text === 'string'
+  const hasImages = Array.isArray(images) && images.length > 0
+  if (!hasText && !hasImages) {
+    return reply.status(400).send({ error: 'Campo "text" ou "images" obrigatório' })
   }
 
   const catList = (categories ?? []).join(', ') || 'Moradia, Transporte, Alimentação, Saúde, Lazer, Financeiro, Outros'
 
-  const anthropic = new Anthropic({ apiKey })
+  const invoicePrompt = `Você é um parser de faturas de cartão de crédito brasileiras.
 
-  const msg = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4096,
-    messages: [
-      {
-        role: 'user',
-        content: `Você é um parser de faturas de cartão de crédito brasileiras.
-
-Analise o texto abaixo extraído de um PDF de fatura e retorne SOMENTE um JSON array com as transações encontradas.
+Analise ${hasImages ? 'as imagens acima (prints de uma fatura — podem estar em sequência, continuação da mesma fatura)' : 'o texto abaixo extraído de um PDF de fatura'} e retorne SOMENTE um JSON array com as transações encontradas.
 
 Para cada transação retorne:
 - "name": descrição limpa (sem datas, sem códigos longos, max 60 chars)
@@ -415,10 +409,28 @@ Regras:
 - Valores devem ser positivos. Se aparecer negativo (crédito/estorno) ou com "+ R$", ignore.
 - Detecte parcelas nos padrões: "PARC 3/12", "03/12" no final, "PARCELA 3 DE 12", "(Parcela 02 de 02)".
 - Para faturas do Banco Inter: ignore "PAGAMENTO ON LINE", "IOF", "JUROS PGTO BOLETO", "Total CARTÃO", seção "Próxima fatura" e encargos financeiros. Datas podem estar no formato "14 de fev. 2026".
-- Retorne APENAS o JSON array, sem markdown, sem explicação.
+- Retorne APENAS o JSON array, sem markdown, sem explicação.`
 
-Texto da fatura:
-${text}`,
+  const anthropic = new Anthropic({ apiKey })
+
+  type ContentBlock = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  const userContent: ContentBlock[] | string = hasImages
+    ? [
+        ...(images as string[]).map((img): ContentBlock => ({
+          type: 'image',
+          source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: img },
+        })),
+        { type: 'text', text: invoicePrompt },
+      ]
+    : `${invoicePrompt}\n\nTexto da fatura:\n${text}`
+
+  const msg = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 4096,
+    messages: [
+      {
+        role: 'user',
+        content: userContent as Parameters<typeof anthropic.messages.create>[0]['messages'][0]['content'],
       },
     ],
   })

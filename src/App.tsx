@@ -1405,74 +1405,155 @@ function renderHistory() {
     .join('')
 }
 
-async function handlePdf(file: File | null | undefined) {
-  if (!file) return
+// Redimensiona imagem para max 1500px e retorna base64 JPEG (sem prefixo data:)
+async function fileToResizedBase64(file: File): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 1500
+        let { width, height } = img
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+          else { width = Math.round(width * MAX / height); height = MAX }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+        const resized = canvas.toDataURL('image/jpeg', 0.85)
+        resolve(resized.split(',')[1] ?? '')
+      }
+      img.onerror = reject
+      img.src = dataUrl
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function handlePdf(input: FileList | File | null | undefined) {
+  const files: File[] = input instanceof FileList
+    ? Array.from(input)
+    : input ? [input] : []
+  if (files.length === 0) return
+
+  const isImage = files[0].type.startsWith('image/')
+
+  if (isImage && !persistenceUsesApi()) {
+    showToast('Importação por foto requer conexão com a API', true)
+    return
+  }
+
   const proc = document.getElementById('pdfProc')
   const status = document.getElementById('pdfStatus')
   if (!proc || !status) return
   proc.classList.add('visible')
-  status.textContent = `Lendo: ${file.name}`
+
   try {
-    const ab = await file.arrayBuffer()
-    // Strip leading null bytes (Inter PDFs have ~435KB of zeros before %PDF header)
-    const view = new Uint8Array(ab)
-    let pdfData: ArrayBuffer = ab
-    for (let i = 0; i < Math.min(view.length - 4, 1_000_000); i++) {
-      if (view[i] === 0x25 && view[i + 1] === 0x50 && view[i + 2] === 0x44 && view[i + 3] === 0x46) {
-        if (i > 0) pdfData = ab.slice(i)
-        break
+    if (isImage) {
+      // ── Caminho imagem: redimensiona cada print e envia ao backend ──
+      status.textContent = `Processando ${files.length} imagem${files.length > 1 ? 's' : ''}...`
+      const b64List = await Promise.all(files.map(fileToResizedBase64))
+      const catNames = getCategories().map((c) => c.name)
+      const base = import.meta.env.VITE_API_URL || ''
+      const url = base.startsWith('http') ? base : ''
+      status.textContent = 'Analisando lançamentos...'
+      const res = await fetch(`${url}/api/parse-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: b64List, mimeType: 'image/jpeg', categories: catNames }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as { error?: string }).error || 'Erro ao analisar imagem')
       }
-    }
-    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
-    let txt = ''
-    for (let p = 1; p <= pdf.numPages; p++) {
-      const pg = await pdf.getPage(p)
-      const ct = await pg.getTextContent()
-      txt += `${ct.items.map((i) => i.str).join(' ')}\n`
-    }
-    session.rawText = txt
-    status.textContent = `Analisando lançamentos...`
-
-    // Tenta API do Claude se backend disponível
-    let usedApi = false
-    if (persistenceUsesApi()) {
-      try {
-        const catNames = getCategories().map((c) => c.name)
-        const base = import.meta.env.VITE_API_URL || ''
-        const url = base.startsWith('http') ? base : ''
-        const res = await fetch(`${url}/api/parse-invoice`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: txt, categories: catNames }),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          if (Array.isArray(data.items) && data.items.length > 0) {
-            session.extractedData = data.items.map((it: {
-              name: string; value: number; category: string;
-              installmentCurrent?: number; installmentTotal?: number; cleanName?: string;
-            }) => ({
-              name: (it.name || 'Lançamento').slice(0, 60),
-              value: it.value || 0,
-              category: it.category || 'Outros',
-              status: 'pendente' as BillStatus,
-              selected: true,
-              ...(it.installmentCurrent && it.installmentTotal ? {
-                installmentCurrent: it.installmentCurrent,
-                installmentTotal: it.installmentTotal,
-                cleanName: it.cleanName || it.name,
-              } : {}),
-            }))
-            usedApi = true
-          }
+      const data = await res.json()
+      if (!Array.isArray(data.items) || data.items.length === 0) {
+        throw new Error('Nenhuma transação encontrada nas imagens')
+      }
+      session.extractedData = data.items.map((it: {
+        name: string; value: number; category: string;
+        installmentCurrent?: number; installmentTotal?: number; cleanName?: string;
+      }) => ({
+        name: (it.name || 'Lançamento').slice(0, 60),
+        value: it.value || 0,
+        category: it.category || 'Outros',
+        status: 'pendente' as BillStatus,
+        selected: true,
+        ...(it.installmentCurrent && it.installmentTotal ? {
+          installmentCurrent: it.installmentCurrent,
+          installmentTotal: it.installmentTotal,
+          cleanName: it.cleanName || it.name,
+        } : {}),
+      }))
+    } else {
+      // ── Caminho PDF (lógica original) ──
+      const file = files[0]
+      status.textContent = `Lendo: ${file.name}`
+      const ab = await file.arrayBuffer()
+      // Strip leading null bytes (Inter PDFs have ~435KB of zeros before %PDF header)
+      const view = new Uint8Array(ab)
+      let pdfData: ArrayBuffer = ab
+      for (let i = 0; i < Math.min(view.length - 4, 1_000_000); i++) {
+        if (view[i] === 0x25 && view[i + 1] === 0x50 && view[i + 2] === 0x44 && view[i + 3] === 0x46) {
+          if (i > 0) pdfData = ab.slice(i)
+          break
         }
-      } catch {
-        // fallback silencioso para parser local
       }
-    }
+      const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
+      let txt = ''
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const pg = await pdf.getPage(p)
+        const ct = await pg.getTextContent()
+        txt += `${ct.items.map((i) => i.str).join(' ')}\n`
+      }
+      session.rawText = txt
+      status.textContent = `Analisando lançamentos...`
 
-    if (!usedApi) {
-      session.extractedData = parseTransactionsFromText(txt)
+      // Tenta API do Claude se backend disponível
+      let usedApi = false
+      if (persistenceUsesApi()) {
+        try {
+          const catNames = getCategories().map((c) => c.name)
+          const base = import.meta.env.VITE_API_URL || ''
+          const url = base.startsWith('http') ? base : ''
+          const res = await fetch(`${url}/api/parse-invoice`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: txt, categories: catNames }),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            if (Array.isArray(data.items) && data.items.length > 0) {
+              session.extractedData = data.items.map((it: {
+                name: string; value: number; category: string;
+                installmentCurrent?: number; installmentTotal?: number; cleanName?: string;
+              }) => ({
+                name: (it.name || 'Lançamento').slice(0, 60),
+                value: it.value || 0,
+                category: it.category || 'Outros',
+                status: 'pendente' as BillStatus,
+                selected: true,
+                ...(it.installmentCurrent && it.installmentTotal ? {
+                  installmentCurrent: it.installmentCurrent,
+                  installmentTotal: it.installmentTotal,
+                  cleanName: it.cleanName || it.name,
+                } : {}),
+              }))
+              usedApi = true
+            }
+          }
+        } catch {
+          // fallback silencioso para parser local
+        }
+      }
+
+      if (!usedApi) {
+        session.extractedData = parseTransactionsFromText(txt)
+      }
     }
 
     enrichCategoriesFromHistory(session.extractedData)
@@ -1480,9 +1561,14 @@ async function handlePdf(file: File | null | undefined) {
     renderExtracted()
     renderImportSteps()
     proc.classList.remove('visible')
-  } catch {
+  } catch (err) {
     proc.classList.remove('visible')
-    showToast('Erro ao ler PDF. Verifique se não é protegido.', true)
+    showToast(
+      isImage
+        ? (err instanceof Error ? err.message : 'Erro ao processar imagem')
+        : 'Erro ao ler PDF. Verifique se não é protegido.',
+      true,
+    )
   }
 }
 
@@ -1525,31 +1611,7 @@ async function analyzeBillDocument(file: File | undefined) {
       }
       body = { type: 'text', content: txt, categories: catNames }
     } else {
-      const b64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const dataUrl = reader.result as string
-          const img = new Image()
-          img.onload = () => {
-            const MAX = 1500
-            let { width, height } = img
-            if (width > MAX || height > MAX) {
-              if (width > height) { height = Math.round(height * MAX / width); width = MAX }
-              else { width = Math.round(width * MAX / height); height = MAX }
-            }
-            const canvas = document.createElement('canvas')
-            canvas.width = width
-            canvas.height = height
-            canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
-            const resized = canvas.toDataURL('image/jpeg', 0.85)
-            resolve(resized.split(',')[1] ?? '')
-          }
-          img.onerror = reject
-          img.src = dataUrl
-        }
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
+      const b64 = await fileToResizedBase64(file)
       body = { type: 'image', content: b64, mimeType: 'image/jpeg', categories: catNames }
     }
 
@@ -1865,7 +1927,7 @@ function navigate(page: string, navEl?: Element | null) {
     'contas-cadastradas': ['Contas', 'Métodos de pagamento e cartões'],
     categorias: ['Categorias', 'Controle de categorias de gastos'],
     'fontes-renda': ['Fontes de renda', 'Cadastre fontes e adicione os valores do mês'],
-    importar: ['Importar Fatura / Extrato', 'Importe faturas de cartão com projeção de parcelas'],
+    importar: ['Importar Fatura (PDF ou Foto)', 'Importe por PDF ou prints da fatura, com detecção de parcelas e projeção futura'],
     historico: ['Histórico', 'Todos os meses registrados'],
   }
   const t = titles[page] || ['', '']
@@ -1996,9 +2058,17 @@ function App() {
       dz.addEventListener('drop', (e: DragEvent) => {
         e.preventDefault()
         dz.classList.remove('over')
-        const f = e.dataTransfer?.files?.[0]
-        if (f && f.type === 'application/pdf') handlePdf(f)
-        else showToast('Envie um arquivo PDF', true)
+        const dFiles = e.dataTransfer?.files
+        if (dFiles && dFiles.length > 0) {
+          const first = dFiles[0]
+          if (first.type === 'application/pdf' || first.type.startsWith('image/')) {
+            handlePdf(dFiles)
+          } else {
+            showToast('Envie um PDF ou imagem (JPG, PNG, WebP)', true)
+          }
+        } else {
+          showToast('Envie um PDF ou imagem (JPG, PNG, WebP)', true)
+        }
       })
     }
 

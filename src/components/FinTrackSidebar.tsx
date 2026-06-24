@@ -75,7 +75,7 @@ export function FinTrackSidebar() {
           data-nav-page="importar"
           onClick={(e) => ft.navigate('importar', e.currentTarget)}
         >
-          <span className="nav-icon">📄</span> Importar extrato
+          <span className="nav-icon">📄</span> Importar fatura
         </div>
         <div
           className="nav-item"
