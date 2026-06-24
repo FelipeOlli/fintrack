@@ -1836,18 +1836,21 @@ body {
   border-bottom: 1px solid var(--border);
 }
 
-.notif-clear {
+.notif-mark-read {
   background: none;
-  border: none;
+  border: 1px solid var(--border);
   color: var(--text3);
   font-size: 0.75rem;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 6px;
   font-family: inherit;
+  flex-shrink: 0;
+  align-self: center;
+  transition: background 0.1s, color 0.1s;
 }
 
-.notif-clear:hover { color: var(--text); background: var(--surface3); }
+.notif-mark-read:hover { color: #22c55e; border-color: #22c55e; background: rgba(34,197,94,0.08); }
 
 .notif-item {
   display: flex;

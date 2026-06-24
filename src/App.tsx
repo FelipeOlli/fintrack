@@ -889,7 +889,7 @@ function renderNotifications() {
     return
   }
   panel.innerHTML =
-    `<div class="notif-header"><span>Notificações</span><button class="notif-clear" onclick="window.__notifClear()">Limpar tudo</button></div>` +
+    `<div class="notif-header"><span>Notificações</span></div>` +
     list
       .map(
         (n) =>
@@ -897,8 +897,9 @@ function renderNotifications() {
             <span class="notif-icon">${n.level === 100 ? '🚨' : n.level === 90 ? '⚠️' : '📊'}</span>
             <div class="notif-body">
               <div class="notif-text">${esc(n.text)}</div>
-              <div class="notif-time">${new Date(n.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+              <div class="notif-time">${new Date(n.createdAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
             </div>
+            ${!n.read ? `<button class="notif-mark-read" title="Marcar como lida" onclick="window.__notifMarkRead('${n.id}')">✓</button>` : ''}
           </div>`,
       )
       .join('')
@@ -912,9 +913,6 @@ function toggleNotifications() {
     panel.style.display = 'none'
   } else {
     panel.style.display = 'block'
-    // Marca todas como lidas ao abrir
-    const list = getNotifications().map((n) => ({ ...n, read: true }))
-    saveNotifications(list)
     renderNotifications()
   }
 }
@@ -2102,6 +2100,7 @@ declare global {
     __importPreviewToggle?: (monthKey: string, idx: number, checked: boolean) => void
     __importAccountChange?: (accountId: string) => void
     __notifClear?: () => void
+    __notifMarkRead?: (id: string) => void
   }
 }
 
@@ -2210,6 +2209,11 @@ function App() {
     window.__notifClear = () => {
       saveNotifications([])
       document.getElementById('notifPanel')!.style.display = 'none'
+      renderNotifications()
+    }
+    window.__notifMarkRead = (id: string) => {
+      const list = getNotifications().map((n) => n.id === id ? { ...n, read: true } : n)
+      saveNotifications(list)
       renderNotifications()
     }
 
