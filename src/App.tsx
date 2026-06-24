@@ -1442,6 +1442,11 @@ async function handlePdf(input: FileList | File | null | undefined) {
 
   const isImage = files[0].type.startsWith('image/')
 
+  if (!session.importAccountId) {
+    showToast('Selecione a conta da fatura antes de enviar o arquivo', true)
+    return
+  }
+
   if (isImage && !persistenceUsesApi()) {
     showToast('Importação por foto requer conexão com a API', true)
     return
@@ -1716,7 +1721,7 @@ function toggleAllExt(v: boolean) {
   })
 }
 
-function importSelected() {
+async function importSelected() {
   if (!session.importAccountId) {
     showToast('Selecione uma conta para importar', true)
     return
@@ -1726,6 +1731,8 @@ function importSelected() {
     showToast('Nenhum item selecionado', true)
     return
   }
+  const ok = await showConfirm(`Importar ${sel.length} lançamento(s) na conta "${getAccountName(session.importAccountId)}"?`)
+  if (!ok) return
   sel.forEach((it) =>
     session.currentBills.push({
       name: it.name,
@@ -1851,13 +1858,20 @@ function renderImportPreview() {
   container.innerHTML = html
 }
 
-function importConfirmed() {
+async function importConfirmed() {
   if (!session.importAccountId) {
     showToast('Selecione uma conta para importar', true)
     return
   }
   const projection = session.importProjection
   const monthKeys = Object.keys(projection)
+  const totalSel = Object.values(projection).flat().filter((i) => i.selected).length
+  if (totalSel === 0) {
+    showToast('Nenhum item selecionado para importar', true)
+    return
+  }
+  const ok = await showConfirm(`Importar ${totalSel} lançamento(s) na conta "${getAccountName(session.importAccountId)}"?`)
+  if (!ok) return
   let totalImported = 0
 
   for (const mk of monthKeys) {
@@ -1882,11 +1896,6 @@ function importConfirmed() {
       appendBillsToMonth(mk, bills)
     }
     totalImported += bills.length
-  }
-
-  if (totalImported === 0) {
-    showToast('Nenhum item selecionado para importar', true)
-    return
   }
 
   renderBills()
