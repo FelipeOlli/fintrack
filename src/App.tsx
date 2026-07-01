@@ -18,6 +18,7 @@ import { mkKey } from './storage/keys'
 import { advanceMonthKey, creditCardTargetMonth } from './lib/monthKeyUtils'
 import {
   appendBillsToMonth,
+  claimBudgetThreshold,
   clearAllBillsMonths,
   getAccounts,
   getCategories,
@@ -917,7 +918,7 @@ function toggleNotifications() {
   }
 }
 
-function checkBudgetThresholds(t: ReturnType<typeof calcTotals>) {
+async function checkBudgetThresholds(t: ReturnType<typeof calcTotals>) {
   if (t.renda <= 0) return
   // Só avalia para o mês atual do calendário
   const nowKey = mkKey(new Date().getFullYear(), new Date().getMonth())
@@ -932,6 +933,12 @@ function checkBudgetThresholds(t: ReturnType<typeof calcTotals>) {
     if (pct >= th && th > firedMax) {
       const monthLabel = formatMonthLabel(nowKey)
       const text = `${th === 100 ? '🚨' : '⚠️'} Gastos atingiram ${th}% da renda em ${monthLabel} (${fmt(t.total)} de ${fmt(t.renda)})`
+
+      // Em modo API: claim no servidor (idempotente, envia Telegram se ganhar o claim).
+      // Em modo offline: sempre true, dedupe local via saveFiredLevels.
+      const claimed = await claimBudgetThreshold(nowKey, th, text)
+      if (!claimed) continue
+
       const notif: AppNotification = {
         id: `${nowKey}-${th}-${Date.now()}`,
         text,
@@ -946,17 +953,6 @@ function checkBudgetThresholds(t: ReturnType<typeof calcTotals>) {
 
       firedLevels[nowKey] = th
       changed = true
-
-      // Dispara Telegram fire-and-forget (só em modo API)
-      if (persistenceUsesApi()) {
-        const base = import.meta.env.VITE_API_URL || ''
-        const url = base.startsWith('http') ? base : ''
-        void fetch(`${url}/api/notify-telegram`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
-        }).catch(() => undefined)
-      }
     }
   }
 
@@ -1041,7 +1037,7 @@ function updateKPIs() {
   setText('c_kpiPend', fmt(t.pend))
   setText('c_kpiDiv', fmt(t.divRenda))
 
-  checkBudgetThresholds(t)
+  void checkBudgetThresholds(t)
   bumpDash()
 }
 

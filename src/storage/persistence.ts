@@ -44,11 +44,13 @@ type ApiCache = {
   recurringTemplates: RecurringTemplate[]
   monthIncome: Record<string, MonthIncomeEntry[]>
   billsByMonth: Record<string, Bill[]>
+  /** Mapa { monthKey → maior nível já disparado } vindo do servidor (dedupe multi-dispositivo). */
+  firedLevels: Record<string, number>
 }
 
 // Inicializa com arrays vazios em modo API para evitar erros antes do bootstrap
 let apiCache: ApiCache | null = persistenceUsesApi()
-  ? { accounts: [], categories: [], incomeSources: [], recurringTemplates: [], monthIncome: {}, billsByMonth: {} }
+  ? { accounts: [], categories: [], incomeSources: [], recurringTemplates: [], monthIncome: {}, billsByMonth: {}, firedLevels: {} }
   : null
 
 function buildUrl(rel: string): string {
@@ -392,11 +394,46 @@ export function saveNotifications(list: AppNotification[]): void {
   localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(list))
 }
 
-/** Mapa { monthKey → maior nível já disparado } para evitar re-disparo no mesmo mês. */
+/**
+ * Mapa { monthKey → maior nível já disparado } para evitar re-disparo no mesmo mês.
+ * Em modo API: lê do cache (populado pelo bootstrap — autoritativo multi-dispositivo).
+ * Em modo offline: lê do localStorage.
+ */
 export function getFiredLevels(): Record<string, number> {
+  if (apiCache) return apiCache.firedLevels
   try { return JSON.parse(localStorage.getItem(NOTIF_FIRED_KEY) || '{}') } catch { return {} }
 }
 
 export function saveFiredLevels(map: Record<string, number>): void {
+  if (apiCache) {
+    apiCache.firedLevels = map
+    return
+  }
   localStorage.setItem(NOTIF_FIRED_KEY, JSON.stringify(map))
+}
+
+/**
+ * Tenta "clamar" o disparo de um threshold no servidor (operação idempotente).
+ * Retorna true se o disparo é legítimo (primeira vez neste mês/nível neste workspace).
+ * Retorna false se já foi disparado por qualquer dispositivo anteriormente.
+ * Em modo offline, sempre retorna true (o dedupe local via saveFiredLevels é suficiente).
+ */
+export async function claimBudgetThreshold(
+  monthKey: string,
+  level: number,
+  text: string,
+): Promise<boolean> {
+  if (!persistenceUsesApi()) return true
+  try {
+    const res = await fetch(buildUrl('api/notify-telegram'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, monthKey, level }),
+    })
+    if (!res.ok) return false
+    const data = (await res.json()) as { ok: boolean; fired?: boolean }
+    return data.fired !== false
+  } catch {
+    return false
+  }
 }

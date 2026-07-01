@@ -105,4 +105,13 @@ CREATE TABLE IF NOT EXISTS month_saved (
     PRIMARY KEY (workspace_id, month_key)
 );
 
+-- Controle de thresholds de orçamento já disparados (80/90/100%) — dedupe multi-dispositivo
+CREATE TABLE IF NOT EXISTS notif_fired (
+    workspace_id UUID NOT NULL REFERENCES workspace (id) ON DELETE CASCADE,
+    month_key TEXT NOT NULL,
+    level INTEGER NOT NULL,
+    fired_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, month_key, level)
+);
+
 COMMIT;

@@ -44,6 +44,15 @@ const fastify = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 })
 // Auto-migration: garante colunas adicionadas após o schema inicial
 await pool.query(`ALTER TABLE account ADD COLUMN IF NOT EXISTS closing_day INTEGER CHECK (closing_day BETWEEN 1 AND 31)`)
 await pool.query(`ALTER TABLE income_source ADD COLUMN IF NOT EXISTS default_value NUMERIC(14,2)`)
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS notif_fired (
+    workspace_id UUID NOT NULL REFERENCES workspace (id) ON DELETE CASCADE,
+    month_key TEXT NOT NULL,
+    level INTEGER NOT NULL,
+    fired_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (workspace_id, month_key, level)
+  )
+`)
 
 await fastify.register(cors, {
   origin: true,
@@ -61,6 +70,7 @@ fastify.get('/api/bootstrap', async (request) => {
     rec,
     minc,
     months,
+    fired,
   ] = await Promise.all([
     pool.query<{
       id: string
@@ -94,6 +104,10 @@ fastify.get('/api/bootstrap', async (request) => {
     ),
     pool.query<{ month_key: string }>(
       'SELECT month_key FROM month_saved WHERE workspace_id = $1 ORDER BY month_key',
+      [ws],
+    ),
+    pool.query<{ month_key: string; level: string }>(
+      'SELECT month_key, MAX(level) AS level FROM notif_fired WHERE workspace_id = $1 GROUP BY month_key',
       [ws],
     ),
   ])
@@ -130,6 +144,11 @@ fastify.get('/api/bootstrap', async (request) => {
     }))
   }
 
+  const firedLevels: Record<string, number> = {}
+  for (const row of fired.rows) {
+    firedLevels[row.month_key] = Number(row.level)
+  }
+
   return {
     accounts: acc.rows.map((a) => ({
       id: a.id,
@@ -157,6 +176,7 @@ fastify.get('/api/bootstrap', async (request) => {
     })),
     monthIncome,
     billsByMonth,
+    firedLevels,
   }
 })
 
@@ -512,28 +532,49 @@ Retorne APENAS o JSON, sem markdown, sem explicação.`
   }
 })
 
-// ── Notificações de orçamento via Telegram ──
-fastify.post<{ Body: { text: string } }>('/api/notify-telegram', async (request, reply) => {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN
-  const chatId = process.env.TELEGRAM_CHAT_ID
-  if (!botToken || !chatId) {
-    return reply.status(501).send({ error: 'TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados' })
-  }
-  const { text } = request.body
-  if (!text || typeof text !== 'string') {
-    return reply.status(400).send({ error: 'Campo "text" obrigatório' })
-  }
-  const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-  })
-  const data = await res.json() as { ok: boolean }
-  if (!data.ok) {
-    return reply.status(502).send({ error: 'Telegram retornou erro', data })
-  }
-  return { ok: true }
-})
+// ── Notificações de orçamento via Telegram (com claim atômico anti-duplicata) ──
+fastify.post<{ Body: { text: string; monthKey?: string; level?: number }; Querystring: { workspaceId?: string } }>(
+  '/api/notify-telegram',
+  async (request, reply) => {
+    const { text, monthKey, level } = request.body
+    if (!text || typeof text !== 'string') {
+      return reply.status(400).send({ error: 'Campo "text" obrigatório' })
+    }
+
+    // Claim atômico: registra (workspace, mês, nível) — ON CONFLICT DO NOTHING garante idempotência
+    if (monthKey && level != null) {
+      const ws = workspaceId(request.query)
+      const claimed = await pool.query<{ level: number }>(
+        `INSERT INTO notif_fired (workspace_id, month_key, level)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING
+         RETURNING level`,
+        [ws, monthKey, level],
+      )
+      // Já foi disparado por outro dispositivo neste mês → não envia novamente
+      if (claimed.rowCount === 0) {
+        return { ok: true, fired: false }
+      }
+    }
+
+    const botToken = process.env.TELEGRAM_BOT_TOKEN
+    const chatId = process.env.TELEGRAM_CHAT_ID
+    if (!botToken || !chatId) {
+      // Claim já registrado (se havia), mas Telegram não configurado — ok silencioso
+      return reply.status(501).send({ error: 'TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados' })
+    }
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    })
+    const data = await res.json() as { ok: boolean }
+    if (!data.ok) {
+      return reply.status(502).send({ error: 'Telegram retornou erro', data })
+    }
+    return { ok: true, fired: true }
+  },
+)
 
 try {
   await fastify.listen({ port: PORT, host: '0.0.0.0' })
