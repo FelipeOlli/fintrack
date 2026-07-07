@@ -764,6 +764,15 @@ export function FinTrackContent() {
         <button type="button" className="btn btn-outline" onClick={ft.closeLancamentoModal}>
           Fechar
         </button>
+        <button
+          type="button"
+          className="btn btn-outline"
+          id="modalLancSkipBtn"
+          style={{ display: 'none' }}
+          onClick={ft.skipQueuedBill}
+        >
+          Pular
+        </button>
         <button type="button" className="btn btn-primary" onClick={ft.saveLancamentoModal}>
           Cadastrar
         </button>

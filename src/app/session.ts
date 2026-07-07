@@ -1,5 +1,7 @@
 import type { Bill, ExtractedItem } from '../domain/types'
 
+export type QueuedBill = { name: string; value: number; category: string; status: string; obs: string }
+
 export const session = {
   currentMonth: '',
   currentBills: [] as Bill[],
@@ -17,4 +19,6 @@ export const session = {
   filterCategoria: '' as string,
   filterConta: '' as string,
   filterStatus: '' as string,
+  pendingBillQueue: [] as QueuedBill[],
+  pendingBillTotal: 0 as number,
 }

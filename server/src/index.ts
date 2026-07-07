@@ -474,7 +474,7 @@ Regras:
   }
 })
 
-// ── Análise de documento único via Claude (comprovante/nota) ──
+// ── Análise de documento via Claude — extrai todos os lançamentos ──
 type AnalyzeBillBody = {
   type: 'image' | 'text'
   content: string
@@ -494,11 +494,12 @@ fastify.post<{ Body: AnalyzeBillBody }>('/api/analyze-bill-document', async (req
   }
 
   const catList = (categories ?? []).join(', ') || 'Moradia, Transporte, Alimentação, Saúde, Lazer, Financeiro, Outros'
-  const systemPrompt = `Você analisa comprovantes, recibos e notas fiscais brasileiras.
-Extraia UM único lançamento financeiro do documento e retorne SOMENTE um JSON flat:
-{ "name": "descrição limpa (max 60 chars)", "value": 0.0, "category": "uma de: ${catList}", "status": "pendente ou pago", "obs": "informação extra útil ou vazio" }
-Regras: valor em reais (number positivo). Se o documento já estiver quitado use "pago", senão "pendente".
-Retorne APENAS o JSON, sem markdown, sem explicação.`
+  const systemPrompt = `Você analisa comprovantes, recibos, notas fiscais e extratos brasileiros.
+Extraia TODOS os lançamentos financeiros presentes no documento e retorne SOMENTE um array JSON:
+[{ "name": "descrição limpa (max 60 chars)", "value": 0.0, "category": "uma de: ${catList}", "status": "pendente ou pago", "obs": "informação extra útil ou vazio" }, ...]
+Regras: valores em reais (number positivo). Se o item já estiver quitado use "pago", senão "pendente".
+Se houver apenas um lançamento, retorne um array com um único objeto.
+Retorne APENAS o array JSON, sem markdown, sem explicação.`
 
   const anthropic = new Anthropic({ apiKey })
 
@@ -512,7 +513,7 @@ Retorne APENAS o JSON, sem markdown, sem explicação.`
 
   const msg = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 512,
+    max_tokens: 4096,
     messages: [{ role: 'user', content: userContent as Parameters<typeof anthropic.messages.create>[0]['messages'][0]['content'] }],
   })
 
@@ -523,10 +524,23 @@ Retorne APENAS o JSON, sem markdown, sem explicação.`
 
   try {
     const raw = block.text.trim()
-    const jsonStr = raw.startsWith('{') ? raw : raw.match(/\{[\s\S]*\}/)?.[0]
-    if (!jsonStr) throw new Error('JSON não encontrado')
-    const bill = JSON.parse(jsonStr)
-    return { bill }
+    // Aceita array cru, array dentro de markdown, ou objeto único (compat.)
+    let parsed: unknown
+    if (raw.startsWith('[')) {
+      parsed = JSON.parse(raw)
+    } else {
+      const arrMatch = raw.match(/\[[\s\S]*\]/)
+      if (arrMatch) {
+        parsed = JSON.parse(arrMatch[0])
+      } else {
+        // fallback: objeto único → embrulha em array
+        const objMatch = raw.match(/\{[\s\S]*\}/)
+        if (!objMatch) throw new Error('JSON não encontrado')
+        parsed = [JSON.parse(objMatch[0])]
+      }
+    }
+    const bills = Array.isArray(parsed) ? parsed : [parsed]
+    return { bills }
   } catch {
     return reply.status(422).send({ error: 'Falha ao parsear resposta do Claude', raw: block.text })
   }

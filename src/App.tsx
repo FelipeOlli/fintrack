@@ -7,6 +7,7 @@ import { FinTrackContent } from './components/FinTrackContent'
 import { FinTrackSidebar } from './components/FinTrackSidebar'
 import { FinTrackTopbar } from './components/FinTrackTopbar'
 import { session } from './app/session'
+import type { QueuedBill } from './app/session'
 import { CAT_COLORS, MONTHS } from './constants/categories'
 import type { AppNotification, Bill, BillStatus, CardType, RecurringValueMode } from './domain/types'
 import { bumpDash } from './lib/dashboardSync'
@@ -1126,11 +1127,11 @@ function updateParcelasHint() {
 
 function openLancamentoModal() {
   session.editingBillIndex = null
+  session.pendingBillQueue = []
+  session.pendingBillTotal = 0
   renderLancamentoModalAccounts()
   renderLancamentoModalCategories()
   const modal = document.getElementById('modalLancamento')
-  const titleEl = document.getElementById('modalLancTitle')
-  if (titleEl) titleEl.textContent = 'Novo lançamento'
   if (modal) modal.classList.add('modal-visible')
   clearLancamentoForm()
   const parcelasInput = document.getElementById('modalLancParcelas') as HTMLInputElement | null
@@ -1167,12 +1168,15 @@ function clearLancamentoForm() {
   if (parcelasInput) parcelasInput.value = '1'
   if (parcelasHint) parcelasHint.style.display = 'none'
   updateLancamentoModalHint('')
+  updateQueueTitle()
 }
 
 function openEditBillModal(i: number) {
   const bill = session.currentBills[i]
   if (!bill) return
   session.editingBillIndex = i
+  session.pendingBillQueue = []
+  session.pendingBillTotal = 0
   renderLancamentoModalAccounts()
   renderLancamentoModalCategories()
   const titleEl = document.getElementById('modalLancTitle')
@@ -1251,7 +1255,66 @@ function onLancAccountChange(e: Event) {
 }
 
 function closeLancamentoModal() {
+  session.pendingBillQueue = []
+  session.pendingBillTotal = 0
+  updateQueueTitle()
   document.getElementById('modalLancamento')?.classList.remove('modal-visible')
+}
+
+/** Preenche o form do modal com um item da fila, mantendo a conta selecionada. */
+function fillLancamentoFormFromBill(bill: QueuedBill) {
+  const nameInput = document.getElementById('modalLancName') as HTMLInputElement | null
+  const valueInput = document.getElementById('modalLancValue') as HTMLInputElement | null
+  const catSelect = document.getElementById('modalLancCat') as HTMLSelectElement | null
+  const statusSelect = document.getElementById('modalLancStatus') as HTMLSelectElement | null
+  const obsInput = document.getElementById('modalLancObs') as HTMLInputElement | null
+  const parcelasInput = document.getElementById('modalLancParcelas') as HTMLInputElement | null
+  const parcelasHint = document.getElementById('modalLancParcelasHint')
+  if (nameInput) nameInput.value = bill.name
+  if (valueInput) valueInput.value = String(bill.value)
+  if (catSelect && bill.category) {
+    const opt = Array.from(catSelect.options).find((o) => o.value === bill.category)
+    if (opt) catSelect.value = bill.category
+  }
+  if (statusSelect) {
+    const validStatuses = ['pendente', 'pago', 'divida', 'vazio']
+    if (validStatuses.includes(bill.status)) statusSelect.value = bill.status
+  }
+  if (obsInput) obsInput.value = bill.obs || ''
+  if (parcelasInput) parcelasInput.value = '1'
+  if (parcelasHint) parcelasHint.style.display = 'none'
+  nameInput?.focus()
+}
+
+/** Atualiza o título e visibilidade do botão Pular conforme o estado da fila. */
+function updateQueueTitle() {
+  const titleEl = document.getElementById('modalLancTitle')
+  const skipBtn = document.getElementById('modalLancSkipBtn') as HTMLButtonElement | null
+  const remaining = session.pendingBillQueue.length
+  const total = session.pendingBillTotal
+  if (total > 1 && remaining > 0) {
+    const current = total - remaining
+    if (titleEl) titleEl.textContent = `Novo lançamento (${current} de ${total})`
+    if (skipBtn) skipBtn.style.display = ''
+  } else if (total > 1 && remaining === 0) {
+    // último item da fila (ainda sendo confirmado)
+    if (titleEl) titleEl.textContent = `Novo lançamento (${total} de ${total})`
+    if (skipBtn) skipBtn.style.display = ''
+  } else {
+    if (titleEl) titleEl.textContent = 'Novo lançamento'
+    if (skipBtn) skipBtn.style.display = 'none'
+  }
+}
+
+/** Pula o item atual da fila e abre o próximo (ou fecha o modal se não houver). */
+function skipQueuedBill() {
+  if (!session.pendingBillQueue.length) {
+    closeLancamentoModal()
+    return
+  }
+  const next = session.pendingBillQueue.shift()!
+  fillLancamentoFormFromBill(next)
+  updateQueueTitle()
 }
 
 async function saveLancamentoModal() {
@@ -1360,7 +1423,22 @@ async function addBill() {
   renderBills()
   updateKPIs()
   renderDashCharts()
-  closeLancamentoModal()
+
+  // Avançar fila de lançamentos detectados pelo documento
+  if (session.pendingBillQueue.length > 0) {
+    const next = session.pendingBillQueue.shift()!
+    fillLancamentoFormFromBill(next)
+    updateQueueTitle()
+    // Reposicionar listeners de parcelas
+    const parcelasInput = document.getElementById('modalLancParcelas') as HTMLInputElement | null
+    const valueInputEl = document.getElementById('modalLancValue') as HTMLInputElement | null
+    parcelasInput?.removeEventListener('input', updateParcelasHint)
+    parcelasInput?.addEventListener('input', updateParcelasHint)
+    valueInputEl?.removeEventListener('input', updateParcelasHint)
+    valueInputEl?.addEventListener('input', updateParcelasHint)
+  } else {
+    closeLancamentoModal()
+  }
 }
 
 function saveEditBill() {
@@ -1727,32 +1805,42 @@ async function analyzeBillDocument(file: File | undefined) {
       return
     }
 
-    const data = await res.json() as { bill: { name?: string; value?: number; category?: string; status?: string; obs?: string } }
-    const bill = data.bill
+    const data = await res.json() as { bills: Array<{ name?: string; value?: number; category?: string; status?: string; obs?: string }> }
+    const bills = data.bills ?? []
 
-    const nameInput = document.getElementById('modalLancName') as HTMLInputElement | null
-    const valueInput = document.getElementById('modalLancValue') as HTMLInputElement | null
-    const catSelect = document.getElementById('modalLancCat') as HTMLSelectElement | null
-    const statusSelect = document.getElementById('modalLancStatus') as HTMLSelectElement | null
-    const obsInput = document.getElementById('modalLancObs') as HTMLInputElement | null
-
-    if (nameInput && bill.name) nameInput.value = bill.name
-    if (valueInput && bill.value != null) valueInput.value = String(bill.value)
-    if (catSelect && bill.category) {
-      const opt = Array.from(catSelect.options).find((o) => o.value === bill.category)
-      if (opt) catSelect.value = bill.category
+    if (bills.length === 0) {
+      showToast('Nenhum lançamento encontrado no documento', true)
+      return
     }
-    if (statusSelect && bill.status) {
-      const validStatuses = ['pendente', 'pago', 'divida', 'vazio']
-      if (validStatuses.includes(bill.status)) statusSelect.value = bill.status
-    }
-    if (obsInput && bill.obs) obsInput.value = bill.obs
 
-    showToast('✅ Campos preenchidos pela IA — confira antes de salvar')
+    // Normaliza para QueuedBill
+    const normalized: QueuedBill[] = bills.map((b) => ({
+      name: b.name ?? '',
+      value: b.value ?? 0,
+      category: b.category ?? '',
+      status: b.status ?? 'pendente',
+      obs: b.obs ?? '',
+    }))
+
+    // Preenche o form com o primeiro item
+    fillLancamentoFormFromBill(normalized[0])
+
+    if (normalized.length > 1) {
+      // Enfileira o restante
+      session.pendingBillQueue = normalized.slice(1)
+      session.pendingBillTotal = normalized.length
+      updateQueueTitle()
+      showToast(`📄 ${normalized.length} lançamentos detectados — confirme um a um`)
+    } else {
+      session.pendingBillQueue = []
+      session.pendingBillTotal = 0
+      updateQueueTitle()
+      showToast('✅ Campos preenchidos pela IA — confira antes de salvar')
+    }
   } catch {
     showToast('Erro ao processar documento', true)
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📎 Anexar documento' }
+    if (btn) { btn.disabled = false; btn.textContent = '📎 Preencher com documento (IA)' }
   }
 }
 
@@ -2249,6 +2337,7 @@ function App() {
       saveFonte,
       closeLancamentoModal,
       saveLancamentoModal,
+      skipQueuedBill,
       toggleNotifications,
       handlePdf,
       analyzeBillDocument,
