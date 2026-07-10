@@ -1607,6 +1607,79 @@ async function fileToResizedBase64(file: File): Promise<string> {
   })
 }
 
+async function extractItemsFromText(txt: string): Promise<void> {
+  let usedApi = false
+  if (persistenceUsesApi()) {
+    try {
+      const catNames = getCategories().map((c) => c.name)
+      const base = import.meta.env.VITE_API_URL || ''
+      const url = base.startsWith('http') ? base : ''
+      const res = await fetch(`${url}/api/parse-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: txt, categories: catNames }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          session.extractedData = data.items.map((it: {
+            name: string; value: number; category: string;
+            installmentCurrent?: number; installmentTotal?: number; cleanName?: string;
+          }) => ({
+            name: (it.name || 'Lançamento').slice(0, 60),
+            value: it.value || 0,
+            category: it.category || 'Outros',
+            status: 'pendente' as BillStatus,
+            selected: true,
+            ...(it.installmentCurrent && it.installmentTotal ? {
+              installmentCurrent: it.installmentCurrent,
+              installmentTotal: it.installmentTotal,
+              cleanName: it.cleanName || it.name,
+            } : {}),
+          }))
+          usedApi = true
+        }
+      }
+    } catch {
+      // fallback silencioso para parser local
+    }
+  }
+  if (!usedApi) {
+    session.extractedData = parseTransactionsFromText(txt)
+  }
+}
+
+async function handlePastedText(txt: string) {
+  const clean = (txt || '').trim()
+  if (!clean) {
+    showToast('Cole o texto da fatura antes de importar', true)
+    return
+  }
+  if (!session.importAccountId) {
+    showToast('Selecione a conta da fatura antes de importar', true)
+    return
+  }
+  const proc = document.getElementById('pdfProc')
+  const status = document.getElementById('pdfStatus')
+  proc?.classList.add('visible')
+  if (status) status.textContent = 'Analisando lançamentos...'
+  try {
+    session.rawText = clean
+    await extractItemsFromText(clean)
+    if (!session.extractedData || session.extractedData.length === 0) {
+      throw new Error('Nenhum lançamento encontrado no texto')
+    }
+    enrichCategoriesFromHistory(session.extractedData)
+    session.importStep = 1
+    renderExtracted()
+    renderImportSteps()
+    proc?.classList.remove('visible')
+  } catch (err) {
+    proc?.classList.remove('visible')
+    showToast(err instanceof Error ? err.message : 'Erro ao processar o texto', true)
+  }
+}
+
 async function handlePdf(input: FileList | File | null | undefined) {
   const files: File[] = input instanceof FileList
     ? Array.from(input)
@@ -1691,47 +1764,7 @@ async function handlePdf(input: FileList | File | null | undefined) {
       session.rawText = txt
       status.textContent = `Analisando lançamentos...`
 
-      // Tenta API do Claude se backend disponível
-      let usedApi = false
-      if (persistenceUsesApi()) {
-        try {
-          const catNames = getCategories().map((c) => c.name)
-          const base = import.meta.env.VITE_API_URL || ''
-          const url = base.startsWith('http') ? base : ''
-          const res = await fetch(`${url}/api/parse-invoice`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: txt, categories: catNames }),
-          })
-          if (res.ok) {
-            const data = await res.json()
-            if (Array.isArray(data.items) && data.items.length > 0) {
-              session.extractedData = data.items.map((it: {
-                name: string; value: number; category: string;
-                installmentCurrent?: number; installmentTotal?: number; cleanName?: string;
-              }) => ({
-                name: (it.name || 'Lançamento').slice(0, 60),
-                value: it.value || 0,
-                category: it.category || 'Outros',
-                status: 'pendente' as BillStatus,
-                selected: true,
-                ...(it.installmentCurrent && it.installmentTotal ? {
-                  installmentCurrent: it.installmentCurrent,
-                  installmentTotal: it.installmentTotal,
-                  cleanName: it.cleanName || it.name,
-                } : {}),
-              }))
-              usedApi = true
-            }
-          }
-        } catch {
-          // fallback silencioso para parser local
-        }
-      }
-
-      if (!usedApi) {
-        session.extractedData = parseTransactionsFromText(txt)
-      }
+      await extractItemsFromText(txt)
     }
 
     enrichCategoriesFromHistory(session.extractedData)
@@ -2340,6 +2373,7 @@ function App() {
       skipQueuedBill,
       toggleNotifications,
       handlePdf,
+      handlePastedText,
       analyzeBillDocument,
       toggleAllExt,
       importSelected,

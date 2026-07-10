@@ -350,8 +350,8 @@ export function FinTrackContent() {
         style={{ display: 'none' }}
       >
         <div className="page-header">
-          <h2>Importar Fatura (PDF ou Foto)</h2>
-          <p>Importe por PDF ou prints da fatura, com detecção de parcelas e projeção futura</p>
+          <h2>Importar Fatura</h2>
+          <p>Importe por PDF, foto ou texto colado — com detecção de parcelas e projeção futura</p>
         </div>
 
         {/* ── Step 0: Upload ── */}
@@ -390,6 +390,45 @@ export function FinTrackContent() {
               <div className="spinner" />
               <span id="pdfStatus">Processando...</span>
             </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 16px' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>ou cole o texto da fatura</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
+
+          <div className="card">
+            <label style={{ fontWeight: 600, fontSize: '0.88rem', display: 'block', marginBottom: 8 }}>
+              Texto da fatura
+            </label>
+            <textarea
+              id="pasteInvoiceText"
+              placeholder={'Cole aqui os lançamentos da fatura (um por linha, com valor)'}
+              style={{
+                width: '100%',
+                minHeight: 140,
+                padding: '10px 12px',
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                fontSize: '0.85rem',
+                fontFamily: 'monospace',
+                resize: 'vertical',
+                background: 'var(--bg)',
+                color: 'var(--text)',
+                boxSizing: 'border-box',
+              }}
+            />
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: 12 }}
+              onClick={() => {
+                const el = document.getElementById('pasteInvoiceText') as HTMLTextAreaElement | null
+                if (ft.handlePastedText) ft.handlePastedText(el?.value || '')
+              }}
+            >
+              Importar texto
+            </button>
           </div>
         </div>
 

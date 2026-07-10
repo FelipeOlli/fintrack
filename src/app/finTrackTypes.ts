@@ -22,6 +22,7 @@ export type FinTrackCtx = {
   skipQueuedBill: () => void
   toggleNotifications: () => void
   handlePdf: (input: FileList | File | null | undefined) => void
+  handlePastedText: (txt: string) => void
   analyzeBillDocument: (file: File | undefined) => void
   toggleAllExt: (value: boolean) => void
   importSelected: () => void
