@@ -108,7 +108,8 @@ async function createRecurringTemplateFromBill(bill: {
     name: bill.name,
     category: bill.category,
     value: tplValue,
-    status: bill.status,
+    // 'pago' é ephemeral (por mês) — template sempre reinicia como 'pendente'
+    status: bill.status === 'pago' ? 'pendente' : bill.status,
     accountId: bill.accountId,
   })
   saveRecurringTemplates(list)
@@ -194,7 +195,8 @@ async function tornarRecorrente(bill: Bill) {
     name: bill.name,
     category: bill.category,
     value: bill.value || 0,
-    status: bill.status,
+    // 'pago' é por mês — o template sempre reinicia como 'pendente'
+    status: bill.status === 'pago' ? 'pendente' : bill.status,
     accountId: bill.accountId,
   })
   renderBills()
@@ -1424,7 +1426,7 @@ async function addBill() {
         const list = getRecurringTemplates()
         const already = list.some((r) => r.name === name && r.category === category)
         if (!already) {
-          list.push({ name, category, value, status, accountId: accountId || undefined })
+          list.push({ name, category, value, status: status === 'pago' ? 'pendente' : status, accountId: accountId || undefined })
           saveRecurringTemplates(list)
         }
       }
@@ -1509,7 +1511,8 @@ function saveEditBill() {
   const nowRec = recurringCheck?.checked ?? false
   if (nowRec && !wasRec) {
     const list = getRecurringTemplates()
-    list.push({ name, category, value, status, accountId })
+    // 'pago' é por mês — o template sempre reinicia como 'pendente'
+    list.push({ name, category, value, status: status === 'pago' ? 'pendente' : status, accountId })
     saveRecurringTemplates(list)
   } else if (!nowRec && wasRec) {
     const list = getRecurringTemplates().filter((r) => !(r.name === bill.name && r.category === bill.category))
