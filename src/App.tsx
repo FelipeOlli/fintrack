@@ -2077,11 +2077,19 @@ function renderImportSteps() {
   step2.style.display = session.importStep === 2 ? 'block' : 'none'
 }
 
+function clearImportInputs() {
+  const fileInput = document.getElementById('pdfInput') as HTMLInputElement | null
+  const textarea = document.getElementById('pasteInvoiceText') as HTMLTextAreaElement | null
+  if (fileInput) fileInput.value = ''
+  if (textarea) textarea.value = ''
+}
+
 function setImportStep(step: number) {
   session.importStep = step
   renderImportSteps()
   if (step === 0) {
     renderImportAccountSelector()
+    clearImportInputs()
   }
 }
 
@@ -2273,6 +2281,7 @@ function navigate(page: string, navEl?: Element | null) {
     renderFontesRendaPage()
   }
   if (page === 'importar') {
+    clearImportInputs()
     renderImportAccountSelector()
     renderImportSteps()
   }
