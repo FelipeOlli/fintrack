@@ -265,6 +265,14 @@ export function FinTrackContent() {
           >
             Limpar filtros
           </button>
+          <button
+            id="btnPagarCartao"
+            type="button"
+            className="btn btn-primary"
+            style={{ fontSize: '0.82rem', padding: '5px 12px', whiteSpace: 'nowrap', display: 'none' }}
+          >
+            ✅ Marcar cartão como pago
+          </button>
         </div>
 
         <div className="card">

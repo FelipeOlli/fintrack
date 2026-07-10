@@ -629,6 +629,23 @@ function renderBills() {
   const fCat = session.filterCategoria
   const fConta = session.filterConta
   const fStatus = session.filterStatus
+
+  // Botão "Marcar cartão como pago": visível só quando um cartão está filtrado
+  const btnPagar = document.getElementById('btnPagarCartao') as HTMLButtonElement | null
+  if (btnPagar) {
+    if (fConta) {
+      const pendentes = session.currentBills.filter((b) => b.accountId === fConta && b.status !== 'pago').length
+      if (pendentes > 0) {
+        btnPagar.style.display = ''
+        btnPagar.textContent = `✅ Marcar "${getAccountName(fConta)}" como pago (${pendentes})`
+        btnPagar.disabled = false
+      } else {
+        btnPagar.style.display = 'none'
+      }
+    } else {
+      btnPagar.style.display = 'none'
+    }
+  }
   session.currentBills.forEach((bill, i) => {
     if (filter) {
       const accountLabel = bill.accountId ? getAccountName(bill.accountId) : ''
@@ -1057,6 +1074,26 @@ function ubill(i: number, f: keyof Bill, v: string) {
   renderDashCharts()
   autoSave()
   renderBills()
+}
+
+async function markCardAsPaid() {
+  const accId = session.filterConta
+  if (!accId) return
+  const alvos = session.currentBills.filter((b) => b.accountId === accId && b.status !== 'pago')
+  if (alvos.length === 0) {
+    showToast('Nenhum lançamento pendente para este cartão neste mês', false)
+    return
+  }
+  const ok = await showConfirm(
+    `Marcar ${alvos.length} lançamento(s) de "${getAccountName(accId)}" como pagos neste mês?`,
+  )
+  if (!ok) return
+  session.currentBills.forEach((b) => { if (b.accountId === accId) b.status = 'pago' })
+  updateKPIs()
+  renderDashCharts()
+  autoSave()
+  renderBills()
+  showToast(`${alvos.length} lançamento(s) marcados como pagos ✅`, false)
 }
 
 function rmBill(i: number) {
@@ -2290,6 +2327,8 @@ function App() {
             renderBills()
           })
         }
+        const btnPagar = document.getElementById('btnPagarCartao') as HTMLButtonElement | null
+        if (btnPagar) btnPagar.addEventListener('click', () => { markCardAsPaid() })
       } catch (err) {
         console.error('Erro ao inicializar app:', err)
         showToast(
