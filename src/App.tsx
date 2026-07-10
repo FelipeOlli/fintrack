@@ -1649,8 +1649,17 @@ async function extractItemsFromText(txt: string): Promise<void> {
   }
 }
 
+function normalizeInvoiceText(txt: string): string {
+  return txt
+    .replace(/Data\s*Movimenta[çc][aã]o\s*Valor/gi, '\n')
+    // insere quebra de linha antes de cada data DD/MM/YYYY que apareça no meio do texto
+    .replace(/([^\n])(\d{2}\/\d{2}\/\d{4})/g, '$1\n$2')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+}
+
 async function handlePastedText(txt: string) {
-  const clean = (txt || '').trim()
+  const clean = normalizeInvoiceText((txt || '').trim())
   if (!clean) {
     showToast('Cole o texto da fatura antes de importar', true)
     return
