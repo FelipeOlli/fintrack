@@ -1,6 +1,23 @@
 import { CAT_KW } from '../constants/categories'
 import type { BillStatus, ExtractedItem } from '../domain/types'
 
+/**
+ * Normaliza texto colado de tabela web para uso no parser regex (fallback offline).
+ * A IA recebe o texto cru e não precisa desta normalização.
+ * Insere quebra de linha antes de cada data reconhecida, remove cabeçalhos de tabela.
+ */
+export function normalizeInvoiceText(txt: string): string {
+  return txt
+    // remove cabeçalho de tabela "DataMovimentaçãoValor" (colagem direta de tabela web)
+    .replace(/Data\s*Movimenta[çc][aã]o\s*Valor/gi, '\n')
+    // quebra antes de datas: DD/MM/YYYY, DD/MM/YY, DD/MM
+    .replace(/([^\n])(\d{2}\/\d{2}\/(?:\d{4}|\d{2}|\d{0}))/g, '$1\n$2')
+    // quebra antes de formato "14 de fev. 2026" ou "14 de fevereiro de 2026"
+    .replace(/([^\n])(\d{1,2}\s+de\s+\w{3,}\.?(?:\s+\d{4})?)/gi, '$1\n$2')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+}
+
 export function guessCategoryFromDescription(d: string): string {
   const dl = d.toLowerCase()
   for (const [cat, kws] of Object.entries(CAT_KW)) {

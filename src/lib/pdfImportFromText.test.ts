@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectInstallment, guessCategoryFromDescription, parseTransactionsFromText } from './pdfImportFromText'
+import { detectInstallment, guessCategoryFromDescription, normalizeInvoiceText, parseTransactionsFromText } from './pdfImportFromText'
 
 describe('pdfImportFromText', () => {
   it('guessCategoryFromDescription maps keywords', () => {
@@ -41,6 +41,15 @@ describe('pdfImportFromText', () => {
     expect(result!.current).toBe(5)
     expect(result!.total).toBe(10)
     expect(result!.cleanName).toBe('JIM.COM* BARTO COMERC')
+  })
+
+  it('normalizeInvoiceText quebra texto concatenado de tabela web por data', () => {
+    const raw = 'DataMovimentaçãoValor12/04/2026AMAZON BR (Parcela 03 de 07)R$ 154,7604/05/2026RIACHUELO RIOR$ 53,33'
+    const result = normalizeInvoiceText(raw)
+    const lines = result.split('\n').filter(Boolean)
+    expect(lines.length).toBeGreaterThanOrEqual(2)
+    expect(lines.some((l) => l.includes('AMAZON'))).toBe(true)
+    expect(lines.some((l) => l.includes('RIACHUELO'))).toBe(true)
   })
 
   it('parseTransactionsFromText filters Inter noise lines', () => {

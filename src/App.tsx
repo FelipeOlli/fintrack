@@ -14,7 +14,7 @@ import { bumpDash } from './lib/dashboardSync'
 import { esc, fmt, setText } from './lib/format'
 import { enrichCategoriesFromHistory } from './lib/deduplication'
 import { buildImportProjection } from './lib/importProjection'
-import { parseTransactionsFromText } from './lib/pdfImportFromText'
+import { normalizeInvoiceText, parseTransactionsFromText } from './lib/pdfImportFromText'
 import { mkKey } from './storage/keys'
 import { advanceMonthKey, creditCardTargetMonth } from './lib/monthKeyUtils'
 import {
@@ -1607,8 +1607,14 @@ async function fileToResizedBase64(file: File): Promise<string> {
   })
 }
 
-async function extractItemsFromText(txt: string): Promise<void> {
-  let usedApi = false
+const MAX_PASTE_CHARS = 100_000
+
+type ExtractOutcome = { count: number; usedAi: boolean; aiError?: string }
+
+/** Envia texto para a IA (texto cru, sem normalização) ou cai no parser regex offline. */
+async function extractItemsFromText(txt: string): Promise<ExtractOutcome> {
+  let usedAi = false
+  let aiError: string | undefined
   if (persistenceUsesApi()) {
     try {
       const catNames = getCategories().map((c) => c.name)
@@ -1637,30 +1643,26 @@ async function extractItemsFromText(txt: string): Promise<void> {
               cleanName: it.cleanName || it.name,
             } : {}),
           }))
-          usedApi = true
+          usedAi = true
         }
+      } else {
+        const err = await res.json().catch(() => ({}))
+        aiError = (err as { error?: string }).error || `Erro HTTP ${res.status}`
       }
-    } catch {
-      // fallback silencioso para parser local
+    } catch (e) {
+      aiError = e instanceof Error ? e.message : 'Falha de rede'
     }
   }
-  if (!usedApi) {
-    session.extractedData = parseTransactionsFromText(txt)
+  if (!usedAi) {
+    // Normaliza apenas para o parser regex (IA recebe texto cru)
+    session.extractedData = parseTransactionsFromText(normalizeInvoiceText(txt))
   }
+  return { count: session.extractedData?.length ?? 0, usedAi, aiError }
 }
 
-function normalizeInvoiceText(txt: string): string {
-  return txt
-    .replace(/Data\s*Movimenta[çc][aã]o\s*Valor/gi, '\n')
-    // insere quebra de linha antes de cada data DD/MM/YYYY que apareça no meio do texto
-    .replace(/([^\n])(\d{2}\/\d{2}\/\d{4})/g, '$1\n$2')
-    .replace(/\n{2,}/g, '\n')
-    .trim()
-}
-
-async function handlePastedText(txt: string) {
-  const clean = normalizeInvoiceText((txt || '').trim())
-  if (!clean) {
+async function handlePastedText(rawTxt: string) {
+  const raw = (rawTxt || '').trim()
+  if (!raw) {
     showToast('Cole o texto da fatura antes de importar', true)
     return
   }
@@ -1668,21 +1670,35 @@ async function handlePastedText(txt: string) {
     showToast('Selecione a conta da fatura antes de importar', true)
     return
   }
+
+  // Proteção contra textos gigantes (evita custo/tokens excessivos)
+  let txt = raw
+  if (raw.length > MAX_PASTE_CHARS) {
+    showToast(`Texto muito longo — considerando os primeiros ${(MAX_PASTE_CHARS / 1000).toFixed(0)} mil caracteres`, false)
+    txt = raw.slice(0, MAX_PASTE_CHARS)
+  }
+
   const proc = document.getElementById('pdfProc')
   const status = document.getElementById('pdfStatus')
   proc?.classList.add('visible')
   if (status) status.textContent = 'Analisando lançamentos...'
   try {
-    session.rawText = clean
-    await extractItemsFromText(clean)
-    if (!session.extractedData || session.extractedData.length === 0) {
-      throw new Error('Nenhum lançamento encontrado no texto')
+    session.rawText = txt
+    const outcome = await extractItemsFromText(txt)
+    proc?.classList.remove('visible')
+
+    if (outcome.count === 0) {
+      if (outcome.aiError) {
+        showToast(`IA indisponível (${outcome.aiError}). Verifique a conexão ou a chave de API.`, true)
+      } else {
+        showToast('Nenhum lançamento reconhecido. Confira se colou os valores corretamente (ex: R$ 123,45).', true)
+      }
+      return
     }
     enrichCategoriesFromHistory(session.extractedData)
     session.importStep = 1
     renderExtracted()
     renderImportSteps()
-    proc?.classList.remove('visible')
   } catch (err) {
     proc?.classList.remove('visible')
     showToast(err instanceof Error ? err.message : 'Erro ao processar o texto', true)

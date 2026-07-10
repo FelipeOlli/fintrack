@@ -412,9 +412,9 @@ fastify.post<{
 
   const catList = (categories ?? []).join(', ') || 'Moradia, Transporte, Alimentação, Saúde, Lazer, Financeiro, Outros'
 
-  const invoicePrompt = `Você é um parser de faturas de cartão de crédito brasileiras.
+  const invoicePrompt = `Você é um parser de faturas de cartão de crédito brasileiras. Funciona para faturas de qualquer banco brasileiro (Inter, Nubank, Itaú, Bradesco, C6, etc.).
 
-Analise ${hasImages ? 'as imagens acima (prints de uma fatura — podem estar em sequência, continuação da mesma fatura)' : 'o texto abaixo extraído de um PDF de fatura'} e retorne SOMENTE um JSON array com as transações encontradas.
+Analise ${hasImages ? 'as imagens acima (prints de uma fatura — podem estar em sequência, continuação da mesma fatura)' : 'o texto abaixo (pode ter sido extraído de PDF, copiado de tabela web ou colado manualmente — inclusive sem quebras de linha entre os lançamentos)'} e retorne SOMENTE um JSON array com as transações encontradas.
 
 Para cada transação retorne:
 - "name": descrição limpa (sem datas, sem códigos longos, max 60 chars)
@@ -425,10 +425,12 @@ Para cada transação retorne:
 - "cleanName": nome sem sufixo de parcela (ex: "AMAZON" a partir de "AMAZON PARC 3/12"), ou null
 
 Regras:
+- O texto pode vir SEM quebras de linha entre os lançamentos (colado de tabela web). Nesse caso, use a data DD/MM/YYYY como separador e extraia cada lançamento separadamente.
 - Ignore linhas de cabeçalho, saldos, totais, pagamentos da fatura e encargos/juros.
 - Valores devem ser positivos. Se aparecer negativo (crédito/estorno) ou com "+ R$", ignore.
 - Detecte parcelas nos padrões: "PARC 3/12", "03/12" no final, "PARCELA 3 DE 12", "(Parcela 02 de 02)".
-- Para faturas do Banco Inter: ignore "PAGAMENTO ON LINE", "IOF", "JUROS PGTO BOLETO", "Total CARTÃO", seção "Próxima fatura" e encargos financeiros. Datas podem estar no formato "14 de fev. 2026".
+- Ignore linhas do tipo: "PAGAMENTO ON LINE", "IOF", "JUROS PGTO BOLETO", "Total CARTÃO XXXX", seção "Próxima fatura", encargos financeiros, cabeçalhos "CARTÃO 5555****XXXX".
+- Datas podem aparecer em vários formatos: "14/06/2026", "14/06/26", "14 de jun. 2026", "14 de junho de 2026".
 - Retorne APENAS o JSON array, sem markdown, sem explicação.`
 
   const anthropic = new Anthropic({ apiKey })
