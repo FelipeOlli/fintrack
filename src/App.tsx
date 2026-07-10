@@ -35,7 +35,7 @@ import {
   listBillsStorageKeysSorted,
   persistenceUsesApi,
   propagateCategoryChange,
-  propagateAccountChange,
+  propagateBillFields,
   readBillsMonth,
   saveAccounts,
   saveCategories,
@@ -1480,7 +1480,7 @@ async function addBill() {
   }
 }
 
-function saveEditBill() {
+async function saveEditBill() {
   if (session.editingBillIndex === null) return
   const accountSelect = document.getElementById('modalLancAccount') as HTMLSelectElement | null
   const nameInput = document.getElementById('modalLancName') as HTMLInputElement | null
@@ -1526,18 +1526,50 @@ function saveEditBill() {
     obs,
     accountId: accountId || undefined,
   }
-  if (category !== oldCategory) {
-    propagateCategoryChange(bill.name, oldCategory, category, session.currentMonth)
+  // Se o lançamento é (ou era) recorrente, atualiza o template e pergunta se propaga para os outros meses
+  const stillRec = wasRec && nowRec
+  if (stillRec) {
+    // Atualiza template com novos valores para que meses futuros (não visitados) fiquem corretos
     const recTemplates = getRecurringTemplates()
     const recIdx = recTemplates.findIndex((r) => r.name === bill.name && r.category === oldCategory)
     if (recIdx >= 0) {
-      recTemplates[recIdx].category = category
+      recTemplates[recIdx] = {
+        ...recTemplates[recIdx],
+        category,
+        value,
+        accountId: accountId || undefined,
+      }
       saveRecurringTemplates(recTemplates)
     }
+
+    // Detecta o que mudou nos meses já salvos
+    const catChanged = category !== oldCategory
+    const accountChanged = (accountId || undefined) !== bill.accountId
+    const valueChanged = value !== bill.value
+
+    if (catChanged || accountChanged || valueChanged) {
+      const changed: string[] = []
+      if (catChanged) changed.push('categoria')
+      if (accountChanged) changed.push('conta/cartão')
+      if (valueChanged) changed.push('valor')
+      const ok = await showConfirm(
+        `Este lançamento é recorrente. Aplicar a mudança de ${changed.join(', ')} nos outros meses salvos também?`,
+      )
+      if (ok) {
+        if (catChanged) propagateCategoryChange(bill.name, oldCategory, category, session.currentMonth)
+        const fieldsToPropagate: Partial<Pick<import('./domain/types').Bill, 'value' | 'accountId'>> = {}
+        if (valueChanged) fieldsToPropagate.value = value
+        if (accountChanged) fieldsToPropagate.accountId = accountId || undefined
+        if (Object.keys(fieldsToPropagate).length > 0) {
+          propagateBillFields(bill.name, catChanged ? category : oldCategory, fieldsToPropagate, session.currentMonth)
+        }
+      }
+    }
+  } else if (category !== oldCategory) {
+    // Não recorrente mas categoria mudou — propaga silenciosamente como antes
+    propagateCategoryChange(bill.name, oldCategory, category, session.currentMonth)
   }
-  if ((accountId || undefined) !== bill.accountId) {
-    propagateAccountChange(bill.name, category, accountId || undefined, session.currentMonth)
-  }
+
   session.editingBillIndex = null
   closeLancamentoModal()
   renderBills()
