@@ -187,10 +187,10 @@ export function FinTrackContent() {
               R$ 0
             </div>
           </div>
-          <div className="kpi-card red">
-            <div className="kpi-label">Em Dívida</div>
+          <div className="kpi-card">
+            <div className="kpi-label" id="c_kpiDivLabel">Lucro</div>
             <div
-              className="kpi-value red"
+              className="kpi-value tone-yellow"
               style={{ fontSize: '1.2rem' }}
               id="c_kpiDiv"
             >

@@ -1055,7 +1055,15 @@ function updateKPIs() {
   setText('c_kpiTotal', fmt(t.total))
   setText('c_kpiPago', fmt(t.pago))
   setText('c_kpiPend', fmt(t.pend))
+  setText('c_kpiDivLabel', tituloOrcamento)
   setText('c_kpiDiv', fmt(t.divRenda))
+  const cKpiDiv = document.getElementById('c_kpiDiv')
+  if (cKpiDiv) {
+    cKpiDiv.classList.remove('tone-red', 'tone-green', 'tone-yellow')
+    if (diff > 0) cKpiDiv.classList.add('tone-red')
+    else if (diff < 0) cKpiDiv.classList.add('tone-green')
+    else cKpiDiv.classList.add('tone-yellow')
+  }
 
   void checkBudgetThresholds(t)
   bumpDash()
