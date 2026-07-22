@@ -23,6 +23,8 @@ import {
   clearAllBillsMonths,
   getAccounts,
   getCategories,
+  getClosingDayFired,
+  getDueDayFired,
   getFiredLevels,
   getIncomeSources,
   getNotifications,
@@ -39,6 +41,8 @@ import {
   readBillsMonth,
   saveAccounts,
   saveCategories,
+  saveClosingDayFired,
+  saveDueDayFired,
   saveFiredLevels,
   saveIncomeSources,
   saveNotifications,
@@ -237,10 +241,15 @@ function openEditAccountModal(id: string) {
   const cardSelect = document.getElementById('modalEditContaCardType') as HTMLSelectElement | null
   const closingDayWrap = document.getElementById('modalEditContaClosingDayWrap')
   const closingDayInput = document.getElementById('modalEditContaClosingDay') as HTMLInputElement | null
+  const dueDayWrap = document.getElementById('modalEditContaDueDayWrap')
+  const dueDayInput = document.getElementById('modalEditContaDueDay') as HTMLInputElement | null
   if (nameInput) nameInput.value = acc.name
   if (cardSelect) cardSelect.value = acc.cardType
-  if (closingDayWrap) closingDayWrap.style.display = acc.cardType === 'credito' ? '' : 'none'
+  const showDayFields = acc.cardType === 'credito' ? '' : 'none'
+  if (closingDayWrap) closingDayWrap.style.display = showDayFields
   if (closingDayInput) closingDayInput.value = acc.closingDay != null ? String(acc.closingDay) : ''
+  if (dueDayWrap) dueDayWrap.style.display = showDayFields
+  if (dueDayInput) dueDayInput.value = acc.dueDay != null ? String(acc.dueDay) : ''
   document.getElementById('modalEditConta')?.classList.add('modal-visible')
 }
 
@@ -254,6 +263,7 @@ function saveEditAccount() {
   const nameInput = document.getElementById('modalEditContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalEditContaCardType') as HTMLSelectElement | null
   const closingDayInput = document.getElementById('modalEditContaClosingDay') as HTMLInputElement | null
+  const dueDayInput = document.getElementById('modalEditContaDueDay') as HTMLInputElement | null
   if (!nameInput || !cardSelect) return
   const name = nameInput.value.trim()
   if (!name) {
@@ -263,9 +273,11 @@ function saveEditAccount() {
   const cardType = cardSelect.value as CardType
   const cdVal = parseInt(closingDayInput?.value || '', 10)
   const closingDay = cardType === 'credito' && !isNaN(cdVal) && cdVal >= 1 && cdVal <= 31 ? cdVal : undefined
+  const ddVal = parseInt(dueDayInput?.value || '', 10)
+  const dueDay = cardType === 'credito' && !isNaN(ddVal) && ddVal >= 1 && ddVal <= 31 ? ddVal : undefined
   const list = getAccounts().map((a) =>
     a.id === session.editingAccountId
-      ? { ...a, name, cardType, closingDay }
+      ? { ...a, name, cardType, closingDay, dueDay }
       : a,
   )
   saveAccounts(list)
@@ -591,17 +603,19 @@ function renderContasCadastradas() {
   wrap.innerHTML = `
     <div class="contas-cadastradas-table-wrap">
       <table>
-        <thead><tr><th>Nome</th><th>Tipo de cartão</th><th>Dia de fechamento</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Nome</th><th>Tipo de cartão</th><th>Dia de fechamento</th><th>Dia de vencimento</th><th>Ações</th></tr></thead>
         <tbody>
           ${accounts
             .map(
               (a) => {
                 const closingDayCell = a.cardType === 'credito' && a.closingDay ? `Dia ${a.closingDay}` : '—'
+                const dueDayCell = a.cardType === 'credito' && a.dueDay ? `Dia ${a.dueDay}` : '—'
                 return `
             <tr>
               <td class="td-name">${esc(a.name)}</td>
               <td>${esc(getAccountCardType(a.id))}</td>
               <td>${esc(closingDayCell)}</td>
+              <td>${esc(dueDayCell)}</td>
               <td class="td-actions">
                 <button type="button" class="btn-ghost-sm btn-edit-acc" data-id="${a.id}">Editar</button>
                 <button type="button" class="btn-icon btn-del-acc" data-id="${a.id}">🗑</button>
@@ -982,6 +996,84 @@ async function checkBudgetThresholds(t: ReturnType<typeof calcTotals>) {
   }
 }
 
+/** Notifica quando a data atual bate o dia de fechamento de algum cartão de crédito. */
+function checkClosingDayNotifications() {
+  const today = new Date()
+  const nowKey = mkKey(today.getFullYear(), today.getMonth())
+  const todayDay = today.getDate()
+
+  const accounts = getAccounts().filter((a) => a.cardType === 'credito' && a.closingDay)
+  if (accounts.length === 0) return
+
+  const fired = getClosingDayFired()
+  const firedSet = new Set(fired)
+  let changed = false
+
+  for (const acc of accounts) {
+    if (acc.closingDay !== todayDay) continue
+    const key = `${acc.id}_${nowKey}`
+    if (firedSet.has(key)) continue
+
+    const notifications = getNotifications()
+    notifications.push({
+      id: `closingday-${key}-${Date.now()}`,
+      text: `📅 O cartão "${acc.name}" fechou a fatura hoje (dia ${acc.closingDay})`,
+      level: 80,
+      monthKey: nowKey,
+      createdAt: Date.now(),
+      read: false,
+    })
+    saveNotifications(notifications)
+
+    firedSet.add(key)
+    changed = true
+  }
+
+  if (changed) {
+    saveClosingDayFired(Array.from(firedSet))
+    renderNotifications()
+  }
+}
+
+/** Notifica quando a data atual bate o dia de vencimento da fatura de algum cartão de crédito. */
+function checkDueDayNotifications() {
+  const today = new Date()
+  const nowKey = mkKey(today.getFullYear(), today.getMonth())
+  const todayDay = today.getDate()
+
+  const accounts = getAccounts().filter((a) => a.cardType === 'credito' && a.dueDay)
+  if (accounts.length === 0) return
+
+  const fired = getDueDayFired()
+  const firedSet = new Set(fired)
+  let changed = false
+
+  for (const acc of accounts) {
+    if (acc.dueDay !== todayDay) continue
+    const key = `${acc.id}_${nowKey}`
+    if (firedSet.has(key)) continue
+
+    const notifications = getNotifications()
+    notifications.push({
+      id: `dueday-${key}-${Date.now()}`,
+      text: `💳 A fatura do cartão "${acc.name}" vence hoje (dia ${acc.dueDay})`,
+      level: 90,
+      monthKey: nowKey,
+      createdAt: Date.now(),
+      read: false,
+    })
+    saveNotifications(notifications)
+
+    firedSet.add(key)
+    changed = true
+  }
+
+  if (changed) {
+    saveDueDayFired(Array.from(firedSet))
+    renderNotifications()
+  }
+}
+
 function updateKpiTrendBadges(t: ReturnType<typeof calcTotals>) {
   const setBadge = (id: string, text: string, variant: 'up' | 'down' | 'neutral') => {
     const el = document.getElementById(id)
@@ -1066,6 +1158,8 @@ function updateKPIs() {
   }
 
   void checkBudgetThresholds(t)
+  checkClosingDayNotifications()
+  checkDueDayNotifications()
   bumpDash()
 }
 
@@ -1123,11 +1217,15 @@ function openAccountModal() {
   const cardSelect = document.getElementById('modalContaCardType') as HTMLSelectElement | null
   const closingDayWrap = document.getElementById('modalContaClosingDayWrap')
   const closingDayInput = document.getElementById('modalContaClosingDay') as HTMLInputElement | null
+  const dueDayWrap = document.getElementById('modalContaDueDayWrap')
+  const dueDayInput = document.getElementById('modalContaDueDay') as HTMLInputElement | null
   if (modal) modal.classList.add('modal-visible')
   if (nameInput) nameInput.value = ''
   if (cardSelect) cardSelect.value = 'nenhum'
   if (closingDayWrap) closingDayWrap.style.display = 'none'
   if (closingDayInput) closingDayInput.value = ''
+  if (dueDayWrap) dueDayWrap.style.display = 'none'
+  if (dueDayInput) dueDayInput.value = ''
   nameInput?.focus()
 }
 
@@ -1139,6 +1237,7 @@ function saveNewAccount() {
   const nameInput = document.getElementById('modalContaName') as HTMLInputElement | null
   const cardSelect = document.getElementById('modalContaCardType') as HTMLSelectElement | null
   const closingDayInput = document.getElementById('modalContaClosingDay') as HTMLInputElement | null
+  const dueDayInput = document.getElementById('modalContaDueDay') as HTMLInputElement | null
   if (!nameInput || !cardSelect) return
   const name = nameInput.value.trim()
   if (!name) {
@@ -1148,9 +1247,11 @@ function saveNewAccount() {
   const cardType = cardSelect.value as CardType
   const cdVal = parseInt(closingDayInput?.value || '', 10)
   const closingDay = cardType === 'credito' && !isNaN(cdVal) && cdVal >= 1 && cdVal <= 31 ? cdVal : undefined
+  const ddVal = parseInt(dueDayInput?.value || '', 10)
+  const dueDay = cardType === 'credito' && !isNaN(ddVal) && ddVal >= 1 && ddVal <= 31 ? ddVal : undefined
   const accounts = getAccounts()
   const id = `acc_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-  accounts.push({ id, name, cardType, closingDay })
+  accounts.push({ id, name, cardType, closingDay, dueDay })
   saveAccounts(accounts)
   closeAccountModal()
   showToast('✅ Conta cadastrada!')

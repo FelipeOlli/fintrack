@@ -12,6 +12,8 @@ import {
   ACCOUNTS_STORAGE_KEY,
   billsStorageKey,
   CATEGORIES_STORAGE_KEY,
+  CLOSING_DAY_FIRED_KEY,
+  DUE_DAY_FIRED_KEY,
   INCOME_SOURCES_KEY,
   incomeStorageKey,
   NOTIFICATIONS_KEY,
@@ -439,6 +441,28 @@ export function saveFiredLevels(map: Record<string, number>): void {
     return
   }
   localStorage.setItem(NOTIF_FIRED_KEY, JSON.stringify(map))
+}
+
+/**
+ * Set de chaves `${accountId}_${monthKey}` já notificadas por "dia de fechamento
+ * do cartão bateu hoje", para não repetir o aviso no mesmo mês. Dedupe local
+ * (localStorage) — não precisa de autoridade multi-dispositivo.
+ */
+export function getClosingDayFired(): string[] {
+  try { return JSON.parse(localStorage.getItem(CLOSING_DAY_FIRED_KEY) || '[]') } catch { return [] }
+}
+
+export function saveClosingDayFired(keys: string[]): void {
+  localStorage.setItem(CLOSING_DAY_FIRED_KEY, JSON.stringify(keys))
+}
+
+/** Mesmo esquema de dedupe de {@link getClosingDayFired}, mas para o dia de vencimento da fatura. */
+export function getDueDayFired(): string[] {
+  try { return JSON.parse(localStorage.getItem(DUE_DAY_FIRED_KEY) || '[]') } catch { return [] }
+}
+
+export function saveDueDayFired(keys: string[]): void {
+  localStorage.setItem(DUE_DAY_FIRED_KEY, JSON.stringify(keys))
 }
 
 /**

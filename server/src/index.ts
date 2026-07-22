@@ -19,7 +19,7 @@ function workspaceId(q: { workspaceId?: string }) {
   return q.workspaceId || DEFAULT_WORKSPACE
 }
 
-type Account = { id: string; name: string; cardType: string; closingDay?: number }
+type Account = { id: string; name: string; cardType: string; closingDay?: number; dueDay?: number }
 type Category = { id: string; name: string; color: string }
 type IncomeSource = { id: string; name: string; recurring: boolean; defaultValue?: number }
 type MonthIncomeEntry = { sourceId: string; value: number }
@@ -43,6 +43,7 @@ const fastify = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 })
 
 // Auto-migration: garante colunas adicionadas após o schema inicial
 await pool.query(`ALTER TABLE account ADD COLUMN IF NOT EXISTS closing_day INTEGER CHECK (closing_day BETWEEN 1 AND 31)`)
+await pool.query(`ALTER TABLE account ADD COLUMN IF NOT EXISTS due_day INTEGER CHECK (due_day BETWEEN 1 AND 31)`)
 await pool.query(`ALTER TABLE income_source ADD COLUMN IF NOT EXISTS default_value NUMERIC(14,2)`)
 await pool.query(`
   CREATE TABLE IF NOT EXISTS notif_fired (
@@ -77,7 +78,8 @@ fastify.get('/api/bootstrap', async (request) => {
       name: string
       card_type: string
       closing_day: number | null
-    }>('SELECT id, name, card_type, closing_day FROM account WHERE workspace_id = $1 ORDER BY name', [ws]),
+      due_day: number | null
+    }>('SELECT id, name, card_type, closing_day, due_day FROM account WHERE workspace_id = $1 ORDER BY name', [ws]),
     pool.query<{ id: string; name: string; color: string }>(
       'SELECT id, name, color FROM category WHERE workspace_id = $1 ORDER BY name',
       [ws],
@@ -155,6 +157,7 @@ fastify.get('/api/bootstrap', async (request) => {
       name: a.name,
       cardType: a.card_type,
       ...(a.closing_day != null ? { closingDay: a.closing_day } : {}),
+      ...(a.due_day != null ? { dueDay: a.due_day } : {}),
     })),
     categories: cat.rows.map((c) => ({
       id: c.id,
@@ -191,9 +194,10 @@ fastify.put<{ Body: { accounts?: Account[] }; Querystring: { workspaceId?: strin
       await c.query('DELETE FROM account WHERE workspace_id = $1', [ws])
       for (const a of accounts) {
         const cd = a.cardType === 'credito' && a.closingDay && a.closingDay >= 1 && a.closingDay <= 31 ? a.closingDay : null
+        const dd = a.cardType === 'credito' && a.dueDay && a.dueDay >= 1 && a.dueDay <= 31 ? a.dueDay : null
         await c.query(
-          `INSERT INTO account (id, workspace_id, name, card_type, closing_day) VALUES ($1,$2,$3,$4,$5)`,
-          [a.id, ws, a.name, a.cardType, cd],
+          `INSERT INTO account (id, workspace_id, name, card_type, closing_day, due_day) VALUES ($1,$2,$3,$4,$5,$6)`,
+          [a.id, ws, a.name, a.cardType, cd, dd],
         )
       }
       await c.query('COMMIT')

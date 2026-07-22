@@ -610,8 +610,11 @@ export function FinTrackContent() {
         <div className="modal-field">
           <label htmlFor="modalContaCardType">Tipo de cartão</label>
           <select id="modalContaCardType" onChange={(e) => {
+            const show = e.target.value === 'credito' ? '' : 'none'
             const wrap = document.getElementById('modalContaClosingDayWrap')
-            if (wrap) wrap.style.display = e.target.value === 'credito' ? '' : 'none'
+            if (wrap) wrap.style.display = show
+            const dueWrap = document.getElementById('modalContaDueDayWrap')
+            if (dueWrap) dueWrap.style.display = show
           }}>
             <option value="nenhum">Nenhum</option>
             <option value="credito">Crédito</option>
@@ -621,6 +624,10 @@ export function FinTrackContent() {
         <div className="modal-field" id="modalContaClosingDayWrap" style={{ display: 'none' }}>
           <label htmlFor="modalContaClosingDay">Dia de fechamento da fatura</label>
           <input type="number" id="modalContaClosingDay" min={1} max={31} placeholder="Ex: 25" />
+        </div>
+        <div className="modal-field" id="modalContaDueDayWrap" style={{ display: 'none' }}>
+          <label htmlFor="modalContaDueDay">Dia de vencimento da fatura</label>
+          <input type="number" id="modalContaDueDay" min={1} max={31} placeholder="Ex: 5" />
         </div>
       </div>
       <div className="modal-footer">
@@ -652,8 +659,11 @@ export function FinTrackContent() {
         <div className="modal-field">
           <label htmlFor="modalEditContaCardType">Tipo de cartão</label>
           <select id="modalEditContaCardType" onChange={(e) => {
+            const show = e.target.value === 'credito' ? '' : 'none'
             const wrap = document.getElementById('modalEditContaClosingDayWrap')
-            if (wrap) wrap.style.display = e.target.value === 'credito' ? '' : 'none'
+            if (wrap) wrap.style.display = show
+            const dueWrap = document.getElementById('modalEditContaDueDayWrap')
+            if (dueWrap) dueWrap.style.display = show
           }}>
             <option value="nenhum">Nenhum</option>
             <option value="credito">Crédito</option>
@@ -663,6 +673,10 @@ export function FinTrackContent() {
         <div className="modal-field" id="modalEditContaClosingDayWrap" style={{ display: 'none' }}>
           <label htmlFor="modalEditContaClosingDay">Dia de fechamento da fatura</label>
           <input type="number" id="modalEditContaClosingDay" min={1} max={31} placeholder="Ex: 25" />
+        </div>
+        <div className="modal-field" id="modalEditContaDueDayWrap" style={{ display: 'none' }}>
+          <label htmlFor="modalEditContaDueDay">Dia de vencimento da fatura</label>
+          <input type="number" id="modalEditContaDueDay" min={1} max={31} placeholder="Ex: 5" />
         </div>
       </div>
       <div className="modal-footer">

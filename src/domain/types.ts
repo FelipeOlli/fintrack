@@ -7,6 +7,7 @@ export type Account = {
   name: string
   cardType: CardType
   closingDay?: number
+  dueDay?: number
 }
 
 export type Bill = {
