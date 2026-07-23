@@ -577,20 +577,25 @@ fastify.post<{ Body: { text: string; monthKey?: string; level?: number }; Querys
       }
     }
 
+    // O claim acima já foi commitado e é irreversível — a partir daqui o envio ao
+    // Telegram é best-effort. Uma falha aqui não pode fazer o app achar que o
+    // threshold "já disparou em outro dispositivo" e perder a notificação in-app.
     const botToken = process.env.TELEGRAM_BOT_TOKEN
     const chatId = process.env.TELEGRAM_CHAT_ID
     if (!botToken || !chatId) {
-      // Claim já registrado (se havia), mas Telegram não configurado — ok silencioso
-      return reply.status(501).send({ error: 'TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados' })
+      fastify.log.warn('TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurados — pulando envio')
+      return { ok: true, fired: true }
     }
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-    })
-    const data = await res.json() as { ok: boolean }
-    if (!data.ok) {
-      return reply.status(502).send({ error: 'Telegram retornou erro', data })
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+      })
+      const data = (await res.json()) as { ok: boolean }
+      if (!data.ok) fastify.log.error({ data }, 'Telegram retornou erro ao enviar notificação')
+    } catch (err) {
+      fastify.log.error({ err }, 'Falha ao enviar notificação ao Telegram')
     }
     return { ok: true, fired: true }
   },
